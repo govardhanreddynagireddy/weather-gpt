@@ -1,20 +1,27 @@
 [project]
 name = "weather-gpt"
 version = "0.1.0"
-description = "Add your description here"
+description = "WeatherGPT+"
 readme = "README.md"
 authors = [
     { name = "govardhanreddynagireddy", email = "govardhanreddynagireddy07@gmail.com" }
 ]
 requires-python = ">=3.12"
+
 dependencies = [
     "faiss-cpu>=1.15.0",
     "fastapi>=0.141.1",
+    "netcdf4>=1.7.4",
+    "numpy>=2.5.3",
+    "pandas>=3.0.5",
     "pypdf>=6.18.1",
     "python-dotenv>=1.2.3",
     "requests>=2.34.2",
+    "scikit-learn>=1.9.1",
     "sentence-transformers>=6.0.1",
+    "torch==2.14.0",
     "uvicorn>=0.52.4",
+    "xarray>=2026.7.0",
 ]
 
 [project.scripts]
@@ -23,3 +30,11 @@ weather-gpt = "weather_gpt:main"
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]
 build-backend = "uv_build"
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch" }

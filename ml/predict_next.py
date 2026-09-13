@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import xarray as xr
 import joblib
 
 from model import WeatherGRU
@@ -10,8 +11,20 @@ from model import WeatherGRU
 # ==============================
 
 MODEL_PATH="ml/data/processed/best_weather_gru.pth"
+DATA_PATH="ml/data/processed/era5_merged.nc"
+FEATURE_SCALER_PATH="ml/data/processed/feature_scaler.pkl"
 TARGET_SCALER_PATH="ml/data/processed/target_scaler.pkl"
-TEST_PATH="ml/data/processed/test.npz"
+
+FEATURES=[
+    "d2m",
+    "t2m",
+    "sp",
+    "tp",
+    "ssrd",
+    "skt",
+    "u10",
+    "v10"
+]
 
 DEVICE=torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
@@ -47,129 +60,110 @@ print("Model loaded successfully!")
 
 
 # ==============================
-# Load target scaler
+# Load scalers
 # ==============================
+
+feature_scaler=joblib.load(
+    FEATURE_SCALER_PATH
+)
 
 target_scaler=joblib.load(
     TARGET_SCALER_PATH
 )
 
-print("Target scaler loaded successfully!")
+print("Scalers loaded successfully!")
 
 
 # ==============================
-# Load test data
+# Load ERA5 data
 # ==============================
 
-data=np.load(TEST_PATH)
+ds=xr.open_dataset(DATA_PATH)
 
-X_test=data["X"]
-y_test=data["y"]
+df=ds[FEATURES].to_dataframe()
 
-print("X_test:",X_test.shape)
-print("y_test:",y_test.shape)
+print("Total records:",len(df))
+
+# Make sure data is sorted
+df=df.sort_index()
 
 
 # ==============================
-# Predict first 1000 samples
+# Take latest 24 hours
 # ==============================
 
-N=min(1000,len(X_test))
+latest=df.iloc[-24:][FEATURES].values
+
+print("Latest sequence shape:",latest.shape)
+
+if len(latest)!=24:
+    raise ValueError("Not enough data for 24-hour sequence")
+
+
+# ==============================
+# Scale features
+# ==============================
+
+latest_scaled=feature_scaler.transform(
+    latest
+)
+
+
+# ==============================
+# Prepare tensor
+# ==============================
 
 x=torch.tensor(
-    X_test[:N],
+    latest_scaled,
     dtype=torch.float32
-).to(DEVICE)
+).unsqueeze(0).to(DEVICE)
+
+
+# ==============================
+# GRU Prediction
+# ==============================
 
 with torch.no_grad():
-    predictions=model(x)
+
+    prediction=model(x)
 
 
 # ==============================
-# Convert to NumPy
+# Convert scaled prediction
 # ==============================
 
-predictions=predictions.cpu().numpy().reshape(-1,1)
+prediction_scaled=prediction.cpu().numpy().reshape(-1,1)
 
-actual=y_test[:N].reshape(-1,1)
-
-
-# ==============================
-# Inverse scaling
-# ==============================
-
-predictions_kelvin=target_scaler.inverse_transform(
-    predictions
-).flatten()
-
-actual_kelvin=target_scaler.inverse_transform(
-    actual
-).flatten()
+prediction_kelvin=target_scaler.inverse_transform(
+    prediction_scaled
+)[0][0]
 
 
-# ==============================
 # Kelvin → Celsius
-# ==============================
-
-predictions_celsius=predictions_kelvin-273.15
-
-actual_celsius=actual_kelvin-273.15
+prediction_celsius=prediction_kelvin-273.15
 
 
 # ==============================
-# Calculate errors
+# Latest timestamp
 # ==============================
 
-errors=np.abs(
-    predictions_celsius-actual_celsius
-)
-
-mae=np.mean(errors)
-
-rmse=np.sqrt(
-    np.mean(
-        (predictions_celsius-actual_celsius)**2
-    )
-)
+latest_time=df.index[-1]
 
 
 # ==============================
-# Display metrics
+# Display result
 # ==============================
 
 print()
 print("==============================")
-print("GRU MULTI-SAMPLE EVALUATION")
+print("NEXT HOUR WEATHER PREDICTION")
 print("==============================")
 
-print("Samples:",N)
+print("Latest ERA5 time:",latest_time)
 
 print(
-    f"MAE  : {mae:.4f} °C"
+    f"Predicted Temperature: "
+    f"{prediction_celsius:.2f} °C"
 )
-
-print(
-    f"RMSE : {rmse:.4f} °C"
-)
-
-print("==============================")
-
-
-# ==============================
-# First 10 predictions
-# ==============================
-
-print()
-print("First 10 predictions:")
-print("==============================")
-
-for i in range(min(10,N)):
-
-    print(
-        f"{i+1:2d}. "
-        f"Predicted: {predictions_celsius[i]:.2f} °C | "
-        f"Actual: {actual_celsius[i]:.2f} °C | "
-        f"Error: {errors[i]:.2f} °C"
-    )
 
 print("==============================")

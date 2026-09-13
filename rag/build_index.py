@@ -15,6 +15,7 @@ BASE_DIR=Path(__file__).resolve().parent
 DOCUMENTS_DIR=BASE_DIR/"documents"
 INDEX_DIR=BASE_DIR/"index"
 
+DOCUMENTS_DIR.mkdir(exist_ok=True)
 INDEX_DIR.mkdir(exist_ok=True)
 
 
@@ -38,12 +39,21 @@ def extract_text(pdf_path):
 
     text=""
 
-    for page in reader.pages:
+    for page_number,page in enumerate(reader.pages,1):
 
-        page_text=page.extract_text()
+        try:
 
-        if page_text:
-            text+=page_text+"\n"
+            page_text=page.extract_text()
+
+            if page_text:
+
+                text+=page_text+"\n"
+
+        except Exception as e:
+
+            print(
+                f"  Warning: could not read page {page_number}: {e}"
+            )
 
     return text
 
@@ -67,6 +77,7 @@ def create_chunks(text):
         chunk=text[start:end]
 
         if chunk.strip():
+
             chunks.append(chunk.strip())
 
         start=end-CHUNK_OVERLAP
@@ -81,31 +92,47 @@ def create_chunks(text):
 def load_documents():
 
     all_chunks=[]
+
     metadata=[]
 
-    pdf_files=list(DOCUMENTS_DIR.glob("*.pdf"))
+    pdf_files=sorted(DOCUMENTS_DIR.glob("*.pdf"))
 
     print(f"Found {len(pdf_files)} PDF files")
 
     for pdf_path in pdf_files:
 
-        print(f"Processing: {pdf_path.name}")
+        print(f"\nProcessing: {pdf_path.name}")
 
         text=extract_text(pdf_path)
 
-        print(f"  Extracted characters: {len(text)}")
+        print(
+            f"  Extracted characters: {len(text)}"
+        )
+
+        if not text.strip():
+
+            print("  WARNING: No text extracted")
+
+            continue
 
         chunks=create_chunks(text)
 
-        print(f"  Created chunks: {len(chunks)}")
+        print(
+            f"  Created chunks: {len(chunks)}"
+        )
 
-        for chunk in chunks:
+        for chunk_number,chunk in enumerate(chunks):
 
             all_chunks.append(chunk)
 
             metadata.append({
+
                 "source":pdf_path.name,
+
+                "chunk_id":chunk_number,
+
                 "text":chunk
+
             })
 
     return all_chunks,metadata
@@ -124,10 +151,19 @@ def build_index(chunks):
     print("Creating embeddings...")
 
     embeddings=model.encode(
+
         chunks,
+
         convert_to_numpy=True,
-        show_progress_bar=True
+
+        show_progress_bar=True,
+
+        batch_size=32
+
     )
+
+    # Convert to float32 for FAISS
+    embeddings=embeddings.astype("float32")
 
     # Normalize embeddings
     faiss.normalize_L2(embeddings)
@@ -138,10 +174,54 @@ def build_index(chunks):
 
     index.add(embeddings)
 
-    print(f"\nEmbedding dimension: {dimension}")
-    print(f"Vectors stored: {index.ntotal}")
+    print(
+        f"\nEmbedding dimension: {dimension}"
+    )
+
+    print(
+        f"Vectors stored: {index.ntotal}"
+    )
 
     return index
+
+
+# -----------------------------
+# Save index
+# -----------------------------
+
+def save_index(index,metadata):
+
+    index_path=INDEX_DIR/"weather_index.faiss"
+
+    metadata_path=INDEX_DIR/"metadata.json"
+
+    faiss.write_index(
+        index,
+        str(index_path)
+    )
+
+    with open(
+        metadata_path,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            metadata,
+            f,
+            ensure_ascii=False,
+            indent=2
+        )
+
+    print("\nFiles saved:")
+
+    print(
+        f"FAISS index: {index_path}"
+    )
+
+    print(
+        f"Metadata: {metadata_path}"
+    )
 
 
 # -----------------------------
@@ -150,38 +230,40 @@ def build_index(chunks):
 
 def main():
 
-    print("================================")
+    print("========================================")
     print("WeatherGPT+ RAG Index Builder")
-    print("================================\n")
+    print("========================================")
+
+    print(
+        f"\nDocuments directory:\n{DOCUMENTS_DIR}"
+    )
 
     chunks,metadata=load_documents()
 
     if not chunks:
-        print("No text found in the PDFs.")
+
+        print(
+            "\nNo text found in the PDF documents."
+        )
+
         return
 
-    print(f"\nTotal chunks: {len(chunks)}")
+    print(
+        f"\nTotal chunks: {len(chunks)}"
+    )
 
     index=build_index(chunks)
 
-    # Save FAISS index
-    index_path=INDEX_DIR/"weather_index.faiss"
+    save_index(
+        index,
+        metadata
+    )
 
-    faiss.write_index(index,str(index_path))
-
-    # Save metadata
-    metadata_path=INDEX_DIR/"metadata.json"
-
-    with open(metadata_path,"w",encoding="utf-8") as f:
-        json.dump(metadata,f,ensure_ascii=False,indent=2)
-
-    print("\n================================")
+    print("\n========================================")
     print("RAG index created successfully!")
-    print("================================")
-
-    print(f"FAISS index: {index_path}")
-    print(f"Metadata: {metadata_path}")
+    print("========================================")
 
 
 if __name__=="__main__":
+
     main()
