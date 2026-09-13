@@ -1,0 +1,27 @@
+# Environment variables
+.env
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.pyc
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+
+# Logs
+*.log
+
+# ML model files
+*.pt
+*.pth
+*.pkl
+*.joblib
