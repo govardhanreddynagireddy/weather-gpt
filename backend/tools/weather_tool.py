@@ -14,6 +14,9 @@ API_KEY=os.getenv("OPENWEATHER_API_KEY")
 
 def get_weather(city):
 
+    if not city or city=="undefined":
+        raise ValueError("Invalid city")
+
     if not API_KEY:
         raise ValueError("OPENWEATHER_API_KEY is missing")
 
@@ -41,8 +44,8 @@ def get_weather(city):
         "temperature_celsius":data["main"]["temp"],
         "humidity_percent":data["main"]["humidity"],
         "wind_speed_kmh":round(data["wind"]["speed"]*3.6,2),
-        "precipitation_mm":data.get("rain",{}).get("1h",0),
         "weather_description":data["weather"][0]["description"],
+        "precipitation_mm":data.get("rain",{}).get("1h",0),
         "time":datetime.now().strftime("%H:%M")
     }
 
@@ -52,6 +55,9 @@ def get_weather(city):
 # =====================================================
 
 def get_weather_forecast(city,days_ahead=1):
+
+    if not city or city=="undefined":
+        raise ValueError("Invalid city")
 
     if not API_KEY:
         raise ValueError("OPENWEATHER_API_KEY is missing")
@@ -93,26 +99,20 @@ def get_weather_forecast(city,days_ahead=1):
                 "temperature":item["main"]["temp"],
                 "feels_like":item["main"]["feels_like"],
                 "humidity":item["main"]["humidity"],
-                "wind_speed":item["wind"]["speed"]*3.6,
+                "wind_speed":round(item["wind"]["speed"]*3.6,2),
                 "weather":item["weather"][0]["description"],
                 "rain_probability":item.get("pop",0)*100,
-                "rainfall":item.get(
-                    "rain",
-                    {}
-                ).get(
-                    "3h",
-                    0
-                )
+                "rainfall":item.get("rain",{}).get("3h",0)
             })
 
     if not forecasts:
-
         raise ValueError(
             "No forecast data available for the requested date."
         )
 
     return {
-        "location":data["city"]["name"],
+        "city":data["city"]["name"],
+        "country":data["city"]["country"],
         "date":str(target_date),
         "forecasts":forecasts
     }
