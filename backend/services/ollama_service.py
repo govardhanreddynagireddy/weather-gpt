@@ -1,3 +1,4 @@
+import os
 import requests
 
 
@@ -5,9 +6,15 @@ import requests
 # OLLAMA SETTINGS
 # =====================================================
 
-OLLAMA_URL="http://127.0.0.1:11434/api/generate"
+OLLAMA_URL=os.getenv(
+    "OLLAMA_URL",
+    "http://127.0.0.1:11434/api/generate"
+)
 
-MODEL_NAME="llama3.2:3b"
+MODEL_NAME=os.getenv(
+    "OLLAMA_MODEL",
+    "llama3.2:3b"
+)
 
 
 # =====================================================
@@ -26,6 +33,14 @@ def generate_response(
         )
 
 
+    if not ollama_available():
+
+        return (
+            "Ollama is currently unavailable. "
+            "The AI response service is not running."
+        )
+
+
     payload={
         "model":model,
         "prompt":prompt,
@@ -33,23 +48,29 @@ def generate_response(
     }
 
 
-    response=requests.post(
-        OLLAMA_URL,
-        json=payload,
-        timeout=120
-    )
+    try:
 
+        response=requests.post(
+            OLLAMA_URL,
+            json=payload,
+            timeout=120
+        )
 
-    response.raise_for_status()
+        response.raise_for_status()
 
+        data=response.json()
 
-    data=response.json()
+        return data.get(
+            "response",
+            ""
+        ).strip()
 
+    except requests.RequestException:
 
-    return data.get(
-        "response",
-        ""
-    ).strip()
+        return (
+            "Ollama is currently unavailable. "
+            "Please try again later."
+        )
 
 
 # =====================================================
@@ -60,8 +81,13 @@ def ollama_available():
 
     try:
 
+        tags_url=OLLAMA_URL.replace(
+            "/api/generate",
+            "/api/tags"
+        )
+
         response=requests.get(
-            "http://127.0.0.1:11434/api/tags",
+            tags_url,
             timeout=5
         )
 
