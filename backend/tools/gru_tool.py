@@ -1,9 +1,11 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import joblib
+import xarray as xr
 
 
 # =====================================================
@@ -19,6 +21,8 @@ FEATURE_SCALER_PATH=BASE_DIR/"ml/data/processed/feature_scaler.pkl"
 TARGET_SCALER_PATH=BASE_DIR/"ml/data/processed/target_scaler.pkl"
 
 TEST_DATA_PATH=BASE_DIR/"ml/data/processed/test.npz"
+
+ERA5_DATA_PATH=BASE_DIR/"ml/data/processed/era5_merged.nc"
 
 
 # =====================================================
@@ -37,6 +41,18 @@ FEATURES=[
 ]
 
 SEQ_LEN=24
+
+HIDDEN_SIZE=128
+
+NUM_LAYERS=2
+
+DROPOUT=0.2
+
+TARGET="t2m"
+
+TARGET_UNIT="celsius"
+
+PREDICTION_HORIZON="next_hour"
 
 
 # =====================================================
@@ -57,8 +73,8 @@ class WeatherGRU(nn.Module):
     def __init__(
         self,
         input_size=8,
-        hidden_size=128,
-        num_layers=2
+        hidden_size=HIDDEN_SIZE,
+        num_layers=NUM_LAYERS
     ):
 
         super().__init__()
@@ -68,7 +84,7 @@ class WeatherGRU(nn.Module):
             hidden_size,
             num_layers,
             batch_first=True,
-            dropout=0.2
+            dropout=DROPOUT
         )
 
         self.fc=nn.Linear(
@@ -143,7 +159,6 @@ target_scaler=joblib.load(
     TARGET_SCALER_PATH
 )
 
-
 print("WeatherGRU ready")
 
 
@@ -151,19 +166,15 @@ print("WeatherGRU ready")
 # PREDICT TEMPERATURE
 # =====================================================
 
-def predict_temperature(
-    weather_data
-):
+def predict_temperature(weather_data):
 
     """
-    Predict next-hour t2m.
+    Predict next-hour temperature.
 
-    Input:
-
+    Input shape:
         24 x 8
 
     Feature order:
-
         d2m
         t2m
         sp
@@ -172,8 +183,11 @@ def predict_temperature(
         skt
         u10
         v10
-    """
 
+    ERA5 t2m target is stored in Kelvin.
+
+    Returned prediction is Celsius.
+    """
 
     # -------------------------------------------------
     # Convert input to NumPy
@@ -186,7 +200,7 @@ def predict_temperature(
 
 
     # -------------------------------------------------
-    # Validate input
+    # Validate shape
     # -------------------------------------------------
 
     expected_shape=(
@@ -203,16 +217,29 @@ def predict_temperature(
 
 
     # -------------------------------------------------
-    # Scale features
+    # Create DataFrame
+    #
+    # This prevents:
+    # "X does not have valid feature names"
     # -------------------------------------------------
 
-    data_scaled=feature_scaler.transform(
-        data
+    data_df=pd.DataFrame(
+        data,
+        columns=FEATURES
     )
 
 
     # -------------------------------------------------
-    # Convert to PyTorch tensor
+    # Scale features
+    # -------------------------------------------------
+
+    data_scaled=feature_scaler.transform(
+        data_df
+    )
+
+
+    # -------------------------------------------------
+    # Convert to PyTorch
     # -------------------------------------------------
 
     X=torch.tensor(
@@ -235,7 +262,7 @@ def predict_temperature(
 
 
     # -------------------------------------------------
-    # Move prediction to CPU
+    # Move to CPU
     # -------------------------------------------------
 
     prediction_scaled=(
@@ -247,7 +274,7 @@ def predict_temperature(
 
 
     # -------------------------------------------------
-    # Inverse scaling
+    # Inverse target scaling
     # -------------------------------------------------
 
     prediction=target_scaler.inverse_transform(
@@ -256,11 +283,24 @@ def predict_temperature(
 
 
     # -------------------------------------------------
+    # Kelvin → Celsius
+    # -------------------------------------------------
+
+    temperature_kelvin=float(
+        prediction[0][0]
+    )
+
+    temperature_celsius=(
+        temperature_kelvin-273.15
+    )
+
+
+    # -------------------------------------------------
     # Return Celsius
     # -------------------------------------------------
 
     return float(
-        prediction[0][0]
+        temperature_celsius
     )
 
 
@@ -268,15 +308,12 @@ def predict_temperature(
 # PREDICT FROM TEST DATA
 # =====================================================
 
-def predict_test_sample(
-    index=0
-):
+def predict_test_sample(index=0):
 
     """
     Test the trained GRU using
-    a sequence from test.npz.
+    one sequence from test.npz.
     """
-
 
     if not TEST_DATA_PATH.exists():
 
@@ -289,7 +326,6 @@ def predict_test_sample(
     test=np.load(
         TEST_DATA_PATH
     )
-
 
     X=test["X"]
 
@@ -322,6 +358,10 @@ def predict_test_sample(
     )
 
 
+    # -------------------------------------------------
+    # Return
+    # -------------------------------------------------
+
     return {
 
         "prediction_celsius":round(
@@ -333,9 +373,176 @@ def predict_test_sample(
 
         "sequence_length":SEQ_LEN,
 
-        "feature_count":len(FEATURES)
+        "feature_count":len(FEATURES),
+
+        "source":"test.npz",
+
+        "prediction_horizon":
+            PREDICTION_HORIZON
 
     }
+
+
+# =====================================================
+# PREDICT FROM LATEST ERA5 DATA
+# =====================================================
+
+def predict_latest_temperature():
+
+    """
+    Predict the next-hour temperature using
+    the latest 24 valid observations from
+    era5_merged.nc.
+    """
+
+    # -------------------------------------------------
+    # Check ERA5 file
+    # -------------------------------------------------
+
+    if not ERA5_DATA_PATH.exists():
+
+        raise FileNotFoundError(
+            f"ERA5 data not found: "
+            f"{ERA5_DATA_PATH}"
+        )
+
+
+    print("Loading latest ERA5 data...")
+
+
+    # -------------------------------------------------
+    # Open dataset
+    # -------------------------------------------------
+
+    dataset=xr.open_dataset(
+        ERA5_DATA_PATH
+    )
+
+
+    try:
+
+        # ---------------------------------------------
+        # Check features
+        # ---------------------------------------------
+
+        missing=[]
+
+        for feature in FEATURES:
+
+            if feature not in dataset:
+
+                missing.append(
+                    feature
+                )
+
+
+        if missing:
+
+            raise ValueError(
+                "Missing features in ERA5 dataset: "
+                f"{missing}"
+            )
+
+
+        # ---------------------------------------------
+        # Extract features
+        # ---------------------------------------------
+
+        feature_arrays=[]
+
+        for feature in FEATURES:
+
+            values=dataset[feature].values
+
+            values=np.asarray(
+                values,
+                dtype=np.float32
+            )
+
+            values=values.reshape(-1)
+
+            feature_arrays.append(
+                values
+            )
+
+
+        # ---------------------------------------------
+        # Combine into table
+        # ---------------------------------------------
+
+        data=np.column_stack(
+            feature_arrays
+        )
+
+
+        # ---------------------------------------------
+        # Remove NaN / infinite rows
+        # ---------------------------------------------
+
+        valid_rows=(
+            np.isfinite(data).all(
+                axis=1
+            )
+        )
+
+        data=data[valid_rows]
+
+
+        # ---------------------------------------------
+        # Check enough data
+        # ---------------------------------------------
+
+        if len(data)<SEQ_LEN:
+
+            raise ValueError(
+                f"Need at least {SEQ_LEN} "
+                f"valid observations in ERA5 data, "
+                f"but only {len(data)} available."
+            )
+
+
+        # ---------------------------------------------
+        # Latest 24 observations
+        # ---------------------------------------------
+
+        sequence=data[-SEQ_LEN:]
+
+
+        # ---------------------------------------------
+        # Predict
+        # ---------------------------------------------
+
+        prediction=predict_temperature(
+            sequence
+        )
+
+
+        # ---------------------------------------------
+        # Return result
+        # ---------------------------------------------
+
+        return {
+
+            "prediction_celsius":round(
+                prediction,
+                2
+            ),
+
+            "sequence_length":SEQ_LEN,
+
+            "feature_count":len(FEATURES),
+
+            "source":"era5_merged.nc",
+
+            "prediction_horizon":
+                PREDICTION_HORIZON
+
+        }
+
+
+    finally:
+
+        dataset.close()
 
 
 # =====================================================
@@ -354,15 +561,18 @@ def get_gru_info():
 
         "feature_count":len(FEATURES),
 
-        "hidden_size":128,
+        "hidden_size":HIDDEN_SIZE,
 
-        "num_layers":2,
+        "num_layers":NUM_LAYERS,
 
-        "dropout":0.2,
+        "dropout":DROPOUT,
 
-        "target":"t2m",
+        "target":TARGET,
 
-        "prediction_horizon":"next_hour",
+        "target_unit":TARGET_UNIT,
+
+        "prediction_horizon":
+            PREDICTION_HORIZON,
 
         "device":str(device)
 
@@ -376,15 +586,21 @@ def get_gru_info():
 if __name__=="__main__":
 
     print()
+
     print("========================================")
+
     print("WeatherGPT+ GRU Test")
+
     print("========================================")
 
     print()
 
-    print(
-        "Model information:"
-    )
+
+    # -------------------------------------------------
+    # Model information
+    # -------------------------------------------------
+
+    print("Model information:")
 
     print(
         get_gru_info()
@@ -392,8 +608,13 @@ if __name__=="__main__":
 
     print()
 
+
+    # -------------------------------------------------
+    # Test sample
+    # -------------------------------------------------
+
     print(
-        "Testing sample 0..."
+        "Testing test.npz sample 0..."
     )
 
     result=predict_test_sample(
@@ -403,11 +624,34 @@ if __name__=="__main__":
     print()
 
     print(
-        "Prediction:"
+        "Test sample prediction:"
     )
 
     print(
         result
+    )
+
+    print()
+
+
+    # -------------------------------------------------
+    # Latest ERA5 prediction
+    # -------------------------------------------------
+
+    print(
+        "Testing latest ERA5 data..."
+    )
+
+    latest=predict_latest_temperature()
+
+    print()
+
+    print(
+        "Latest ERA5 prediction:"
+    )
+
+    print(
+        latest
     )
 
     print()
