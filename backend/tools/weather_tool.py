@@ -36,12 +36,14 @@ def get_weather(city):
     data=response.json()
 
     return {
-        "location":data["name"],
-        "temperature":data["main"]["temp"],
-        "humidity":data["main"]["humidity"],
-        "wind_speed":data["wind"]["speed"],
-        "weather":data["weather"][0]["description"],
-        "rainfall":data.get("rain",{}).get("1h",0)
+        "city":data["name"],
+        "country":data["sys"]["country"],
+        "temperature_celsius":data["main"]["temp"],
+        "humidity_percent":data["main"]["humidity"],
+        "wind_speed_kmh":round(data["wind"]["speed"]*3.6,2),
+        "precipitation_mm":data.get("rain",{}).get("1h",0),
+        "weather_description":data["weather"][0]["description"],
+        "time":datetime.now().strftime("%H:%M")
     }
 
 
@@ -91,7 +93,7 @@ def get_weather_forecast(city,days_ahead=1):
                 "temperature":item["main"]["temp"],
                 "feels_like":item["main"]["feels_like"],
                 "humidity":item["main"]["humidity"],
-                "wind_speed":item["wind"]["speed"],
+                "wind_speed":item["wind"]["speed"]*3.6,
                 "weather":item["weather"][0]["description"],
                 "rain_probability":item.get("pop",0)*100,
                 "rainfall":item.get(
@@ -103,13 +105,11 @@ def get_weather_forecast(city,days_ahead=1):
                 )
             })
 
-
     if not forecasts:
 
         raise ValueError(
             "No forecast data available for the requested date."
         )
-
 
     return {
         "location":data["city"]["name"],
