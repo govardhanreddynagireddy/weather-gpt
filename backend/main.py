@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.agent.orchestrator import orchestrate
@@ -18,6 +19,24 @@ app=FastAPI(
     ),
 
     version="1.0.0"
+)
+
+
+# =====================================================
+# CORS
+# =====================================================
+
+app.add_middleware(
+
+    CORSMiddleware,
+
+    allow_origins=["*"],
+
+    allow_credentials=False,
+
+    allow_methods=["*"],
+
+    allow_headers=["*"]
 )
 
 
@@ -42,7 +61,6 @@ def root():
         "message":"WeatherGPT+ API is running",
 
         "status":"success"
-
     }
 
 
@@ -56,7 +74,6 @@ def health():
     return {
 
         "status":"healthy"
-
     }
 
 
@@ -68,6 +85,7 @@ def health():
 def chat(request:ChatRequest):
 
     result=orchestrate(
+
         request.message
     )
 
