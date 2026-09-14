@@ -299,6 +299,11 @@
 
     </div>
 
+
+    <!-- =====================================================
+         WEATHER DASHBOARD
+    ====================================================== -->
+
     <div class="weather-dashboard">
 
         <div class="city-search">
@@ -317,6 +322,7 @@
 
         </div>
 
+
         <div class="location">
 
             📍
@@ -326,6 +332,7 @@
             </span>
 
         </div>
+
 
         <div class="main-temperature">
 
@@ -337,9 +344,11 @@
 
         </div>
 
+
         <div id="weatherDescription">
             Loading weather...
         </div>
+
 
         <div class="weather-stats">
 
@@ -351,9 +360,12 @@
                     --
                 </strong>
 
-                <span>Humidity</span>
+                <span>
+                    Humidity
+                </span>
 
             </div>
+
 
             <div class="stat">
 
@@ -363,9 +375,12 @@
                     --
                 </strong>
 
-                <span>Wind</span>
+                <span>
+                    Wind
+                </span>
 
             </div>
+
 
             <div class="stat">
 
@@ -375,11 +390,14 @@
                     --
                 </strong>
 
-                <span>Rain</span>
+                <span>
+                    Rain
+                </span>
 
             </div>
 
         </div>
+
 
         <button
             class="refresh-button"
@@ -390,6 +408,11 @@
         </button>
 
     </div>
+
+
+    <!-- =====================================================
+         QUICK BUTTONS
+    ====================================================== -->
 
     <div class="quick-buttons">
 
@@ -406,6 +429,11 @@
         </button>
 
     </div>
+
+
+    <!-- =====================================================
+         CHAT
+    ====================================================== -->
 
     <div id="chat" class="chat">
 
@@ -430,6 +458,11 @@ Examples:
 
     </div>
 
+
+    <!-- =====================================================
+         INPUT
+    ====================================================== -->
+
     <div class="input-area">
 
         <input
@@ -451,25 +484,35 @@ Examples:
 
 </div>
 
+
 <script>
 
 /* =====================================================
    RAILWAY BACKEND
 ===================================================== */
 
-const API_URL = "https://weather-gpt-production-4837.up.railway.app";
+const API_URL =
+    "https://weather-gpt-production-4837.up.railway.app";
 
+
+/* =====================================================
+   ELEMENTS
+===================================================== */
 
 const input =
-    document.getElementById("messageInput");
-
+    document.getElementById(
+        "messageInput"
+    );
 
 const sendButton =
-    document.getElementById("sendButton");
-
+    document.getElementById(
+        "sendButton"
+    );
 
 const chat =
-    document.getElementById("chat");
+    document.getElementById(
+        "chat"
+    );
 
 
 /* =====================================================
@@ -479,13 +522,17 @@ const chat =
 function addMessage(text,type) {
 
     const message =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     message.className =
         "message " + type;
 
     const bubble =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     bubble.className =
         "bubble";
@@ -493,9 +540,13 @@ function addMessage(text,type) {
     bubble.textContent =
         text;
 
-    message.appendChild(bubble);
+    message.appendChild(
+        bubble
+    );
 
-    chat.appendChild(message);
+    chat.appendChild(
+        message
+    );
 
     chat.scrollTop =
         chat.scrollHeight;
@@ -510,13 +561,17 @@ function addMessage(text,type) {
 function addWeatherCard(weather) {
 
     const message =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     message.className =
         "message bot";
 
     const bubble =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     bubble.className =
         "bubble";
@@ -525,54 +580,73 @@ function addWeatherCard(weather) {
 
         <div class="weather-card-title">
 
-            🌤️ ${weather.city}, ${weather.country}
+            🌤️ ${weather.location}
 
         </div>
 
         <div class="weather-card">
 
             <div>
+
                 🌡️ Temperature:
+
                 <strong>
-                    ${weather.temperature_celsius} °C
+                    ${weather.temperature} °C
                 </strong>
+
             </div>
 
             <div>
+
                 💧 Humidity:
+
                 <strong>
-                    ${weather.humidity_percent}%
+                    ${weather.humidity}%
                 </strong>
+
             </div>
 
             <div>
+
                 💨 Wind:
+
                 <strong>
-                    ${weather.wind_speed_kmh} km/h
+                    ${weather.wind_speed} km/h
                 </strong>
+
             </div>
 
             <div>
+
                 🌧️ Rain:
+
                 <strong>
-                    ${weather.precipitation_mm} mm
+                    ${weather.rainfall} mm
                 </strong>
+
             </div>
 
             <div>
-                🕐 Time:
+
+                🌤️ Condition:
+
                 <strong>
-                    ${weather.time}
+                    ${weather.weather}
                 </strong>
+
             </div>
 
         </div>
 
     `;
 
-    message.appendChild(bubble);
+    message.appendChild(
+        bubble
+    );
 
-    chat.appendChild(message);
+    chat.appendChild(
+        message
+    );
 
     chat.scrollTop =
         chat.scrollHeight;
@@ -587,13 +661,17 @@ function addWeatherCard(weather) {
 function addForecastCard(forecast) {
 
     const message =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     message.className =
         "message bot";
 
     const bubble =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
 
     bubble.className =
         "bubble";
@@ -602,54 +680,76 @@ function addForecastCard(forecast) {
 
         <div class="weather-card-title">
 
-            🔮 ${forecast.city}, ${forecast.country}
+            🔮 ${forecast.city || forecast.location}
 
         </div>
 
         <div class="weather-card">
 
             <div>
+
                 📅 Date:
+
                 <strong>
                     ${forecast.date}
                 </strong>
+
             </div>
 
             <div>
+
                 🌡️ Maximum:
+
                 <strong>
-                    ${forecast.max_temperature_celsius} °C
+                    ${forecast.max_temperature_celsius}
+                    °C
                 </strong>
+
             </div>
 
             <div>
+
                 🌡️ Minimum:
+
                 <strong>
-                    ${forecast.min_temperature_celsius} °C
+                    ${forecast.min_temperature_celsius}
+                    °C
                 </strong>
+
             </div>
 
             <div>
+
                 🌤️ Condition:
+
                 <strong>
                     ${forecast.weather_description}
                 </strong>
+
             </div>
 
             <div>
+
                 🌧️ Precipitation:
+
                 <strong>
-                    ${forecast.precipitation_mm} mm
+                    ${forecast.precipitation_mm}
+                    mm
                 </strong>
+
             </div>
 
         </div>
 
     `;
 
-    message.appendChild(bubble);
+    message.appendChild(
+        bubble
+    );
 
-    chat.appendChild(message);
+    chat.appendChild(
+        message
+    );
 
     chat.scrollTop =
         chat.scrollHeight;
@@ -665,24 +765,46 @@ async function loadWeather(city) {
 
     try {
 
+        /* Prevent undefined / empty city */
+
+        if(
+            !city ||
+            city.trim()==="" ||
+            city.toLowerCase()==="undefined"
+        ) {
+
+            throw new Error(
+                "Invalid city"
+            );
+
+        }
+
+
         document.getElementById(
             "weatherDescription"
         ).textContent =
             "Loading weather...";
+
 
         document.getElementById(
             "currentTemperature"
         ).textContent =
             "--";
 
+
         const response =
             await fetch(
+
                 API_URL +
                 "/weather/" +
-                encodeURIComponent(city)
+                encodeURIComponent(
+                    city.trim()
+                )
+
             );
 
-        if (!response.ok) {
+
+        if(!response.ok) {
 
             throw new Error(
                 "Weather API error: " +
@@ -691,10 +813,12 @@ async function loadWeather(city) {
 
         }
 
+
         const data =
             await response.json();
 
-        if (data.error) {
+
+        if(data.error) {
 
             throw new Error(
                 data.error
@@ -702,47 +826,70 @@ async function loadWeather(city) {
 
         }
 
+
+        /* =============================================
+           MATCH BACKEND RESPONSE
+
+           Backend:
+
+           {
+             location:"Kurnool",
+             temperature:32.56,
+             humidity:42,
+             wind_speed:2.2,
+             weather:"broken clouds",
+             rainfall:0
+           }
+        ============================================= */
+
+
         document.getElementById(
             "weatherCity"
         ).textContent =
-            data.city +
-            ", " +
-            data.country;
+            data.location +
+            ", India";
+
 
         document.getElementById(
             "currentTemperature"
         ).textContent =
-            data.temperature_celsius;
+            data.temperature;
+
 
         document.getElementById(
             "humidity"
         ).textContent =
-            data.humidity_percent +
+            data.humidity +
             "%";
+
 
         document.getElementById(
             "wind"
         ).textContent =
-            data.wind_speed_kmh +
+            data.wind_speed +
             " km/h";
+
 
         document.getElementById(
             "rain"
         ).textContent =
-            data.precipitation_mm +
+            data.rainfall +
             " mm";
+
 
         document.getElementById(
             "weatherDescription"
         ).textContent =
-            "Current weather";
+            data.weather;
+
 
         document.getElementById(
             "cityInput"
         ).value =
-            data.city;
+            data.location;
 
     }
+
 
     catch(error) {
 
@@ -751,12 +898,34 @@ async function loadWeather(city) {
         ).textContent =
             "Unable to load weather";
 
+
         document.getElementById(
             "currentTemperature"
         ).textContent =
             "--";
 
-        console.error(error);
+
+        document.getElementById(
+            "humidity"
+        ).textContent =
+            "--";
+
+
+        document.getElementById(
+            "wind"
+        ).textContent =
+            "--";
+
+
+        document.getElementById(
+            "rain"
+        ).textContent =
+            "--";
+
+
+        console.error(
+            error
+        );
 
     }
 
@@ -771,15 +940,26 @@ function searchCity() {
 
     const city =
         document
-        .getElementById("cityInput")
+        .getElementById(
+            "cityInput"
+        )
         .value
         .trim();
 
-    if (!city) {
+
+    if(
+        !city ||
+        city.toLowerCase()==="undefined"
+    ) {
+
         return;
+
     }
 
-    loadWeather(city);
+
+    loadWeather(
+        city
+    );
 
 }
 
@@ -792,15 +972,26 @@ function refreshWeather() {
 
     const city =
         document
-        .getElementById("cityInput")
+        .getElementById(
+            "cityInput"
+        )
         .value
         .trim();
 
-    if (!city) {
+
+    if(
+        !city ||
+        city.toLowerCase()==="undefined"
+    ) {
+
         return;
+
     }
 
-    loadWeather(city);
+
+    loadWeather(
+        city
+    );
 
 }
 
@@ -811,10 +1002,26 @@ function refreshWeather() {
 
 function getCurrentCity() {
 
-    return document
-        .getElementById("cityInput")
+    const city =
+        document
+        .getElementById(
+            "cityInput"
+        )
         .value
         .trim();
+
+
+    if(
+        !city ||
+        city.toLowerCase()==="undefined"
+    ) {
+
+        return "Kurnool";
+
+    }
+
+
+    return city;
 
 }
 
@@ -828,14 +1035,13 @@ function askCurrentWeather() {
     const city =
         getCurrentCity();
 
-    if (!city) {
-        return;
-    }
 
     quickMessage(
+
         "What is the weather in " +
         city +
         "?"
+
     );
 
 }
@@ -850,14 +1056,13 @@ function askTomorrow() {
     const city =
         getCurrentCity();
 
-    if (!city) {
-        return;
-    }
 
     quickMessage(
+
         "What will the weather be tomorrow in " +
         city +
         "?"
+
     );
 
 }
@@ -869,8 +1074,16 @@ function askTomorrow() {
 
 function askNextHour() {
 
+    const city =
+        getCurrentCity();
+
+
     quickMessage(
-        "What will the temperature be next hour?"
+
+        "What will the temperature be next hour in " +
+        city +
+        "?"
+
     );
 
 }
@@ -885,43 +1098,63 @@ async function sendMessage() {
     const message =
         input.value.trim();
 
-    if (!message) {
+
+    if(!message) {
+
         return;
+
     }
+
 
     addMessage(
         message,
         "user"
     );
 
-    input.value = "";
 
-    sendButton.disabled = true;
+    input.value =
+        "";
+
+
+    sendButton.disabled =
+        true;
+
 
     const typing =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
+
 
     typing.className =
         "typing";
 
+
     typing.textContent =
         "WeatherGPT is thinking...";
 
-    chat.appendChild(typing);
+
+    chat.appendChild(
+        typing
+    );
+
 
     chat.scrollTop =
         chat.scrollHeight;
+
 
     try {
 
         const response =
             await fetch(
 
-                API_URL + "/chat",
+                API_URL +
+                "/chat",
 
                 {
 
-                    method: "POST",
+                    method:
+                        "POST",
 
                     headers: {
 
@@ -930,17 +1163,20 @@ async function sendMessage() {
 
                     },
 
-                    body: JSON.stringify({
+                    body:
+                        JSON.stringify({
 
-                        message: message
+                            message:
+                                message
 
-                    })
+                        })
 
                 }
 
             );
 
-        if (!response.ok) {
+
+        if(!response.ok) {
 
             throw new Error(
                 "API error: " +
@@ -949,101 +1185,163 @@ async function sendMessage() {
 
         }
 
+
         const data =
             await response.json();
+
 
         typing.remove();
 
 
-        /* CURRENT WEATHER */
+        /* =============================================
+           CURRENT WEATHER
+        ============================================= */
 
-        if (
+        if(
             data.type ===
             "city_weather"
         ) {
 
-            addWeatherCard(
+            if(
                 data.weather
-            );
+            ) {
 
-            addMessage(
-                data.answer,
-                "bot"
-            );
+                addWeatherCard(
+                    data.weather
+                );
+
+            }
+
+
+            if(
+                data.answer
+            ) {
+
+                addMessage(
+                    data.answer,
+                    "bot"
+                );
+
+            }
 
         }
 
 
-        /* TOMORROW FORECAST */
+        /* =============================================
+           TOMORROW FORECAST
+        ============================================= */
 
-        else if (
+        else if(
             data.type ===
             "tomorrow_forecast"
         ) {
 
-            addForecastCard(
+            if(
                 data.forecast
-            );
+            ) {
 
-            addMessage(
-                data.answer,
-                "bot"
-            );
+                addForecastCard(
+                    data.forecast
+                );
+
+            }
+
+
+            if(
+                data.answer
+            ) {
+
+                addMessage(
+                    data.answer,
+                    "bot"
+                );
+
+            }
 
         }
 
 
-        /* GRU PREDICTION */
+        /* =============================================
+           GRU PREDICTION
+        ============================================= */
 
-        else if (
+        else if(
             data.type ===
             "gru_prediction"
         ) {
 
+            let text =
+                "";
+
+
+            if(
+                data.predicted_temperature_celsius
+                !== undefined
+            ) {
+
+                text =
+                    "📈 Next-hour temperature prediction: " +
+                    data.predicted_temperature_celsius +
+                    " °C\n\n";
+
+            }
+
+
+            text +=
+                data.answer ||
+                "GRU prediction completed.";
+
+
             addMessage(
-
-                "📈 Next-hour temperature prediction: " +
-                data.predicted_temperature_celsius +
-                " °C\n\n" +
-                data.answer,
-
+                text,
                 "bot"
-
             );
 
         }
 
 
-        /* GENERAL RESPONSE */
+        /* =============================================
+           GENERAL / RAG RESPONSE
+        ============================================= */
 
         else {
 
             addMessage(
-                data.answer,
+
+                data.answer ||
+                data.response ||
+                "No response received.",
+
                 "bot"
+
             );
 
         }
 
     }
+
 
     catch(error) {
 
         typing.remove();
 
+
         addMessage(
 
             "❌ Error connecting to WeatherGPT API.\n\n" +
-            "Backend:\n" +
-            API_URL,
+            "Please check the Railway backend logs.",
 
             "bot"
 
         );
 
-        console.error(error);
+
+        console.error(
+            error
+        );
 
     }
+
 
     finally {
 
@@ -1081,7 +1379,7 @@ input.addEventListener(
 
     function(event) {
 
-        if (
+        if(
             event.key ===
             "Enter"
         ) {
@@ -1105,7 +1403,9 @@ window.addEventListener(
 
     function() {
 
-        loadWeather("Kurnool");
+        loadWeather(
+            "Kurnool"
+        );
 
     }
 
