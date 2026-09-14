@@ -13,6 +13,11 @@ from backend.tools.rag_tool import (
     search_weather
 )
 
+from backend.tools.weather_api_tool import (
+    get_weather,
+    get_weather_forecast
+)
+
 
 # =====================================================
 # ORCHESTRATOR
@@ -31,30 +36,119 @@ def orchestrate(message):
             "error":"Message cannot be empty."
         }
 
-
     message=message.strip()
 
     tool=route_tool(message)
 
 
     # =================================================
-    # GENERAL WEATHER → OLLAMA
+    # GENERAL WEATHER → OPENWEATHER → OLLAMA
     # =================================================
 
     if tool=="weather":
 
+        # ---------------------------------------------
+        # Get city
+        # ---------------------------------------------
+
+        city="Kurnool"
+
+        if " in " in message.lower():
+
+            city_part=message.lower().split(
+                " in ",
+                1
+            )[1]
+
+            city_part=city_part.replace(
+                " tomorrow",
+                ""
+            ).replace(
+                " today",
+                ""
+            ).replace(
+                "?",
+                ""
+            ).strip()
+
+            if city_part:
+
+                city=city_part
+
+
+        # ---------------------------------------------
+        # Determine forecast day
+        # ---------------------------------------------
+
+        days_ahead=0
+
+        if "tomorrow" in message.lower():
+
+            days_ahead=1
+
+
+        # ---------------------------------------------
+        # Get weather data
+        # ---------------------------------------------
+
+        try:
+
+            if days_ahead==1:
+
+                weather_data=get_weather_forecast(
+                    city,
+                    days_ahead
+                )
+
+            else:
+
+                weather_data=get_weather(
+                    city
+                )
+
+        except Exception as e:
+
+            return {
+                "success":False,
+                "tool":"weather",
+                "message":message,
+                "error":str(e)
+            }
+
+
+        # ---------------------------------------------
+        # Send weather data to Ollama
+        # ---------------------------------------------
+
         prompt=f"""
 You are WeatherGPT+, a helpful weather assistant.
 
-User question:
+Answer the user's question using ONLY the weather
+data provided below.
+
+IMPORTANT RULES:
+
+1. Do not invent weather information.
+
+2. Do not say that you do not have access to live
+   weather data because actual weather data is
+   provided below.
+
+3. Answer the user's question directly.
+
+4. If multiple forecast times are provided, summarize
+   the weather conditions throughout the day.
+
+5. Mention temperature, weather condition, humidity,
+   wind speed and rainfall probability when available.
+
+USER QUESTION:
 {message}
 
-Answer the user's question clearly and concisely.
+WEATHER DATA:
+{weather_data}
 
-If the question requires live weather data that is
-not provided to you, do not invent weather information.
-
-Instead, clearly say that live weather data is required.
+Now provide a clear, concise answer.
 """
 
         answer=generate_response(
@@ -65,6 +159,7 @@ Instead, clearly say that live weather data is required.
             "success":True,
             "tool":"weather",
             "message":message,
+            "weather_data":weather_data,
             "answer":answer
         }
 
@@ -195,7 +290,6 @@ IMD WEATHER CONTEXT:
 
 Now answer the user's question directly.
 """
-
 
         answer=generate_response(
             prompt
