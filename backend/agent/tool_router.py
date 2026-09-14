@@ -24,7 +24,10 @@ def route_tool(message):
         "forecast bulletin",
         "official forecast",
         "imd forecast",
-        "imd warning"
+        "imd warning",
+        "weather alert",
+        "cyclone alert",
+        "storm warning"
 
     ]
 
@@ -37,16 +40,16 @@ def route_tool(message):
 
 
     # =================================================
-    # GRU PREDICTION QUESTIONS
+    # GRU NEXT-HOUR / MODEL PREDICTION
     # =================================================
 
     gru_keywords=[
 
+        "next hour",
+        "next-hour",
+        "next temperature",
         "temperature prediction",
         "predict temperature",
-        "temperature tomorrow",
-        "next temperature",
-        "temperature forecast",
         "predict weather",
         "gru",
         "model prediction",
@@ -118,3 +121,4 @@ def route_tool(message):
     # =================================================
 
     return "weather"
+
