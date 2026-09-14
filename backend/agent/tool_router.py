@@ -13,7 +13,6 @@ def route_tool(message):
     # =================================================
 
     rag_keywords=[
-
         "imd",
         "warning",
         "bulletin",
@@ -28,15 +27,7 @@ def route_tool(message):
         "weather alert",
         "cyclone alert",
         "storm warning"
-
     ]
-
-
-    for keyword in rag_keywords:
-
-        if keyword in message:
-
-            return "rag"
 
 
     # =================================================
@@ -44,7 +35,6 @@ def route_tool(message):
     # =================================================
 
     gru_keywords=[
-
         "next hour",
         "next-hour",
         "next temperature",
@@ -53,16 +43,9 @@ def route_tool(message):
         "predict weather",
         "gru",
         "model prediction",
-        "future temperature"
-
+        "future temperature",
+        "predicted temperature"
     ]
-
-
-    for keyword in gru_keywords:
-
-        if keyword in message:
-
-            return "gru"
 
 
     # =================================================
@@ -70,7 +53,6 @@ def route_tool(message):
     # =================================================
 
     historical_keywords=[
-
         "historical",
         "history",
         "last year",
@@ -79,15 +61,7 @@ def route_tool(message):
         "historical weather",
         "past temperature",
         "historical temperature"
-
     ]
-
-
-    for keyword in historical_keywords:
-
-        if keyword in message:
-
-            return "historical"
 
 
     # =================================================
@@ -95,7 +69,6 @@ def route_tool(message):
     # =================================================
 
     risk_keywords=[
-
         "risk",
         "danger",
         "impact",
@@ -105,15 +78,89 @@ def route_tool(message):
         "heat risk",
         "rain risk",
         "weather risk"
-
     ]
 
 
-    for keyword in risk_keywords:
+    has_rag=any(
+        keyword in message
+        for keyword in rag_keywords
+    )
 
-        if keyword in message:
+    has_gru=any(
+        keyword in message
+        for keyword in gru_keywords
+    )
 
-            return "risk"
+    has_historical=any(
+        keyword in message
+        for keyword in historical_keywords
+    )
+
+    has_risk=any(
+        keyword in message
+        for keyword in risk_keywords
+    )
+
+
+    # =================================================
+    # COMBINED INTENT DETECTION
+    # =================================================
+
+    wants_current_and_gru=(
+        has_gru and (
+            "current weather" in message
+            or "weather and" in message
+            or "weather as well as" in message
+            or "weather with" in message
+            or "today and next hour" in message
+            or "weather now" in message
+            or "current conditions" in message
+            or ("weather in" in message and has_gru)
+            or ("current temperature" in message and has_gru)
+        )
+    )
+
+    wants_weather_and_rag=(
+        has_rag and (
+            "current weather" in message
+            or "weather and" in message
+            or "weather as well as" in message
+            or "weather with" in message
+            or "weather in" in message
+            or "today's weather" in message
+        )
+    )
+
+    wants_gru_and_rag=(
+        has_gru and has_rag
+    )
+
+
+    if wants_current_and_gru:
+        return "weather_gru"
+
+    if wants_weather_and_rag:
+        return "weather_rag"
+
+    if wants_gru_and_rag:
+        return "gru_rag"
+
+
+    # =================================================
+    # SINGLE INTENT
+    # =================================================
+
+    if has_rag:
+        return "rag"
+
+    if has_gru:
+        return "gru"
+
+    if has_historical:
+        return "historical"
+
+    if has_risk:
+        return "risk"
 
 
     # =================================================
@@ -121,4 +168,5 @@ def route_tool(message):
     # =================================================
 
     return "weather"
+
 

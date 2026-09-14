@@ -1,3 +1,22 @@
+import os
+
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+# Guard against native access violation in PyTorch CUDA stream capture on CPU/Windows
+import torch
+if hasattr(torch, "cuda"):
+    torch.cuda.is_current_stream_capturing = lambda: False
+    if hasattr(torch.cuda, "graphs"):
+        torch.cuda.graphs.is_current_stream_capturing = lambda: False
+
+try:
+    import transformers.utils.import_utils
+    transformers.utils.import_utils.is_cuda_stream_capturing = lambda: False
+except Exception:
+    pass
+
 from backend.agent.tool_router import route_tool
 
 from backend.tools.gru_tool import (
@@ -33,38 +52,39 @@ from backend.tools.weather_tool import (
 
 def extract_city(message):
 
-    message_lower=message.lower().strip()
+    if not message:
+        return "Kurnool"
 
-    message_lower=message_lower.replace(
-        "?",
-        ""
-    ).strip()
+    text = message.strip()
+    for char in "?!.,:;\"'()[]{}":
+        text = text.replace(char, " ")
 
-    if " in " in message_lower:
+    text_lower = " " + " ".join(text.lower().split()) + " "
+    city = None
 
-        city=message_lower.split(
-            " in ",
-            1
-        )[1].strip()
+    for prep in [" in ", " for ", " of ", " at "]:
+        if prep in text_lower:
+            parts = text_lower.split(prep, 1)
+            candidate = parts[1].strip()
+            for stop in [" tomorrow", " today", " next hour", " right now", " now", " and ", " please"]:
+                if stop in candidate:
+                    candidate = candidate.split(stop, 1)[0].strip()
+            if candidate and candidate.lower() != "undefined":
+                city = candidate
+                break
 
-        words_to_remove=[
-            " tomorrow",
-            " today",
-            " next hour",
-            " right now",
-            " now"
-        ]
+    if not city:
+        for suffix in [" weather", " forecast", " temperature"]:
+            if suffix in text_lower:
+                candidate = text_lower.split(suffix, 1)[0].strip()
+                words = candidate.split()
+                if words:
+                    last_word = words[-1]
+                    if last_word not in ["the", "a", "an", "what", "is", "show", "get", "tell", "current", "tomorrow"]:
+                        city = last_word
 
-        for word in words_to_remove:
-
-            city=city.replace(
-                word,
-                ""
-            ).strip()
-
-        if city and city!="undefined":
-
-            return city.title()
+    if city and city.lower() != "undefined" and len(city) > 1:
+        return city.title()
 
     return "Kurnool"
 
@@ -205,7 +225,8 @@ def orchestrate(message):
 
         return {
             "success":False,
-            "error":"Message cannot be empty."
+            "error":"Message cannot be empty.",
+            "answer":"⚠️ Message cannot be empty."
         }
 
     message=message.strip()
@@ -223,6 +244,227 @@ def orchestrate(message):
         "DEBUG 0: SELECTED TOOL =",
         tool
     )
+
+
+    # =================================================
+    # COMBINED: WEATHER + GRU
+    # =================================================
+
+    if tool=="weather_gru":
+
+        city=extract_city(message)
+        weather_data=None
+        weather_err=None
+        prediction=None
+        predicted_temp=None
+        gru_err=None
+
+        try:
+            weather_data=get_weather(city)
+        except Exception as e:
+            weather_err=str(e)
+
+        try:
+            prediction=predict_latest_temperature()
+            if isinstance(prediction,dict):
+                predicted_temp=prediction.get(
+                    "prediction_celsius",
+                    prediction.get(
+                        "predicted_temperature_celsius",
+                        prediction.get("prediction",0.0)
+                    )
+                )
+            else:
+                predicted_temp=float(prediction)
+        except Exception as e:
+            gru_err=str(e)
+
+        answer_parts=[]
+        if weather_data:
+            answer_parts.append(
+                f"Current weather in {city}:\n\n"
+                f"🌡️ Temperature: {weather_data.get('temperature_celsius', '--')} °C\n"
+                f"💧 Humidity: {weather_data.get('humidity_percent', '--')}%\n"
+                f"💨 Wind: {weather_data.get('wind_speed_kmh', '--')} km/h\n"
+                f"🌧️ Rain: {weather_data.get('precipitation_mm', 0)} mm\n"
+                f"🌤️ Condition: {weather_data.get('weather_description', '--')}"
+            )
+        elif weather_err:
+            answer_parts.append(f"⚠️ Current weather unavailable for {city}: {weather_err}")
+
+        if predicted_temp is not None:
+            answer_parts.append(
+                f"📈 Next-hour temperature prediction (WeatherGRU):\n\n"
+                f"The model predicts the next-hour temperature to be approximately {predicted_temp:.2f} °C."
+            )
+        elif gru_err:
+            answer_parts.append(f"⚠️ GRU prediction unavailable: {gru_err}")
+
+        answer="\n\n".join(answer_parts)
+
+        return {
+            "success":weather_data is not None or predicted_temp is not None,
+            "tool":"weather_gru",
+            "type":"city_weather",
+            "message":message,
+            "weather":weather_data,
+            "weather_data":weather_data,
+            "prediction":prediction,
+            "predicted_temperature_celsius":predicted_temp,
+            "rag_sources":[],
+            "answer":answer
+        }
+
+
+    # =================================================
+    # COMBINED: WEATHER + RAG
+    # =================================================
+
+    if tool=="weather_rag":
+
+        city=extract_city(message)
+        days_ahead=1 if "tomorrow" in message.lower() else 0
+        weather_data=None
+        weather_err=None
+        results=[]
+        sources=[]
+        rag_err=None
+
+        try:
+            if days_ahead==1:
+                weather_data=get_weather_forecast(city,days_ahead=1)
+            else:
+                weather_data=get_weather(city)
+        except Exception as e:
+            weather_err=str(e)
+
+        try:
+            results=search_weather(message)
+            if results:
+                for r in results:
+                    sources.append({
+                        "source":r.get("source","IMD Document"),
+                        "chunk_id":r.get("chunk_id",""),
+                        "score":round(float(r.get("score",0.0)),4)
+                    })
+        except Exception as e:
+            rag_err=str(e)
+
+        answer_parts=[]
+        if weather_data:
+            if days_ahead==1:
+                summary=summarize_forecast(city,weather_data)
+                answer_parts.append(
+                    f"Tomorrow's forecast for {city} ({summary['date']}):\n\n"
+                    f"🌡️ Max: {summary['max_temperature_celsius']} °C\n"
+                    f"🌡️ Min: {summary['min_temperature_celsius']} °C\n"
+                    f"🌧️ Precipitation: {summary['precipitation_mm']} mm\n"
+                    f"🌤️ Condition: {summary['weather_description']}"
+                )
+            else:
+                answer_parts.append(
+                    f"Current weather in {city}:\n\n"
+                    f"🌡️ Temperature: {weather_data.get('temperature_celsius', '--')} °C\n"
+                    f"💧 Humidity: {weather_data.get('humidity_percent', '--')}%\n"
+                    f"💨 Wind: {weather_data.get('wind_speed_kmh', '--')} km/h\n"
+                    f"🌧️ Rain: {weather_data.get('precipitation_mm', 0)} mm\n"
+                    f"🌤️ Condition: {weather_data.get('weather_description', '--')}"
+                )
+        elif weather_err:
+            answer_parts.append(f"⚠️ Weather data unavailable for {city}: {weather_err}")
+
+        if results:
+            rag_lines=["Relevant IMD official information:\n"]
+            for i,r in enumerate(results[:2],1):
+                rag_lines.append(f"Source {i} ({r.get('source','IMD')}):\n{r.get('text','').strip()}\n")
+            answer_parts.append("\n".join(rag_lines))
+        elif rag_err:
+            answer_parts.append(f"⚠️ IMD document search unavailable: {rag_err}")
+
+        answer="\n\n".join(answer_parts)
+
+        return {
+            "success":weather_data is not None or len(results)>0,
+            "tool":"weather_rag",
+            "type":"city_weather" if days_ahead==0 else "tomorrow_forecast",
+            "message":message,
+            "weather":weather_data if days_ahead==0 else None,
+            "forecast":summarize_forecast(city,weather_data) if (days_ahead==1 and weather_data) else None,
+            "sources":sources,
+            "rag_sources":sources,
+            "answer":answer
+        }
+
+
+    # =================================================
+    # COMBINED: GRU + RAG
+    # =================================================
+
+    if tool=="gru_rag":
+
+        prediction=None
+        predicted_temp=None
+        gru_err=None
+        results=[]
+        sources=[]
+        rag_err=None
+
+        try:
+            prediction=predict_latest_temperature()
+            if isinstance(prediction,dict):
+                predicted_temp=prediction.get(
+                    "prediction_celsius",
+                    prediction.get(
+                        "predicted_temperature_celsius",
+                        prediction.get("prediction",0.0)
+                    )
+                )
+            else:
+                predicted_temp=float(prediction)
+        except Exception as e:
+            gru_err=str(e)
+
+        try:
+            results=search_weather(message)
+            if results:
+                for r in results:
+                    sources.append({
+                        "source":r.get("source","IMD Document"),
+                        "chunk_id":r.get("chunk_id",""),
+                        "score":round(float(r.get("score",0.0)),4)
+                    })
+        except Exception as e:
+            rag_err=str(e)
+
+        answer_parts=[]
+        if predicted_temp is not None:
+            answer_parts.append(
+                f"📈 Next-hour temperature prediction (WeatherGRU):\n\n"
+                f"The model predicts the temperature to be approximately {predicted_temp:.2f} °C."
+            )
+        elif gru_err:
+            answer_parts.append(f"⚠️ GRU prediction unavailable: {gru_err}")
+
+        if results:
+            rag_lines=["Relevant IMD official information:\n"]
+            for i,r in enumerate(results[:2],1):
+                rag_lines.append(f"Source {i} ({r.get('source','IMD')}):\n{r.get('text','').strip()}\n")
+            answer_parts.append("\n".join(rag_lines))
+        elif rag_err:
+            answer_parts.append(f"⚠️ IMD document search unavailable: {rag_err}")
+
+        answer="\n\n".join(answer_parts)
+
+        return {
+            "success":predicted_temp is not None or len(results)>0,
+            "tool":"gru_rag",
+            "type":"gru_prediction",
+            "message":message,
+            "prediction":prediction,
+            "predicted_temperature_celsius":predicted_temp,
+            "sources":sources,
+            "answer":answer
+        }
 
 
     # =================================================
@@ -292,16 +534,27 @@ def orchestrate(message):
                 str(e)
             )
 
+            if days_ahead==1:
+                return {
+                    "success":False,
+                    "tool":"weather",
+                    "type":"tomorrow_forecast",
+                    "message":message,
+                    "forecast":None,
+                    "error":str(e),
+                    "answer":f"⚠️ Could not retrieve tomorrow's forecast for {city}: {str(e)}"
+                }
+
             return {
-
                 "success":False,
-
                 "tool":"weather",
-
+                "type":"city_weather",
                 "message":message,
-
-                "error":str(e)
-
+                "weather":None,
+                "weather_data":None,
+                "rag_sources":[],
+                "error":str(e),
+                "answer":f"⚠️ Could not retrieve current weather for {city}: {str(e)}"
             }
 
 
@@ -477,9 +730,17 @@ def orchestrate(message):
 
                 "tool":"gru",
 
+                "type":"gru_prediction",
+
                 "message":message,
 
-                "error":str(e)
+                "prediction":None,
+
+                "predicted_temperature_celsius":None,
+
+                "error":str(e),
+
+                "answer":f"⚠️ Could not compute GRU next-hour prediction: {str(e)}"
 
             }
 
@@ -621,11 +882,15 @@ def orchestrate(message):
 
                 "tool":"rag",
 
-                "type":"rag_error",
+                "type":"rag_response",
 
                 "message":message,
 
-                "error":str(e)
+                "sources":[],
+
+                "error":str(e),
+
+                "answer":f"⚠️ Could not search IMD documents: {str(e)}"
 
             }
 

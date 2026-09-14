@@ -31,9 +31,6 @@ FEATURES=[
     "v10"
 ]
 
-OLLAMA_URL="http://127.0.0.1:11434/api/generate"
-OLLAMA_MODEL="llama3.2:3b"
-
 DEVICE=torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
 )
@@ -45,7 +42,7 @@ DEVICE=torch.device(
 
 app=FastAPI(
     title="WeatherGPT GRU API",
-    description="Weather prediction using GRU, Open-Meteo and Ollama",
+    description="Weather prediction using GRU, Open-Meteo and RAG",
     version="1.0.0"
 )
 
@@ -492,27 +489,6 @@ def get_weather_description(code):
 
 
 # ============================================================
-# OLLAMA
-# ============================================================
-
-def ask_ollama(prompt):
-
-    response=requests.post(
-        OLLAMA_URL,
-        json={
-            "model":OLLAMA_MODEL,
-            "prompt":prompt,
-            "stream":False
-        },
-        timeout=120
-    )
-
-    response.raise_for_status()
-
-    return response.json()["response"].strip()
-
-
-# ============================================================
 # HOME
 # ============================================================
 
@@ -528,10 +504,7 @@ def home():
             "running",
 
         "device":
-            str(DEVICE),
-
-        "llm":
-            OLLAMA_MODEL
+            str(DEVICE)
 
     }
 
@@ -550,12 +523,6 @@ def health():
 
         "model":
             "WeatherGRU",
-
-        "llm":
-            "Ollama",
-
-        "llm_model":
-            OLLAMA_MODEL,
 
         "device":
             str(DEVICE),
@@ -686,8 +653,7 @@ def chat(request:ChatRequest):
 
                 # ------------------------------------------------
                 # IMPORTANT:
-                # We create the factual answer ourselves.
-                # Ollama does NOT change weather values.
+                # We format the factual answer directly.
                 # ------------------------------------------------
 
                 answer=(
@@ -827,46 +793,11 @@ def chat(request:ChatRequest):
     # GENERAL CHAT
     # ========================================================
 
-    prompt=f"""
-You are WeatherGPT, a helpful weather assistant.
-
-The WeatherGRU model has predicted the next-hour
-temperature as {temperature} degrees Celsius.
-
-User message:
-{message}
-
-Answer naturally and conversationally.
-
-Do not invent weather measurements.
-
-If the user asks for a specific city's current weather,
-tell them to ask something like:
-"What is the weather in Kurnool?"
-
-If they ask for tomorrow's weather, tell them to ask:
-"What will the weather be tomorrow in Kurnool?"
-
-Keep the answer short.
-"""
-
-
-    try:
-
-        answer=ask_ollama(prompt)
-
-    except Exception as e:
-
-        print(
-            "Ollama error:",
-            e
-        )
-
-        answer=(
-            "I'm having trouble connecting to "
-            "the language model right now."
-        )
-
+    answer = (
+        f"I am WeatherGPT. The WeatherGRU model predicts the next-hour "
+        f"temperature to be {temperature} °C. You can ask for current weather in a city "
+        f"(e.g., 'What is the weather in Kurnool?'), tomorrow's forecast, or IMD warnings."
+    )
 
     return {
 

@@ -7,8 +7,22 @@
 
 import os
 
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK","TRUE")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
 
+# Guard against native access violation in PyTorch CUDA stream capture on CPU/Windows
+import torch
+if hasattr(torch, "cuda"):
+    torch.cuda.is_current_stream_capturing = lambda: False
+    if hasattr(torch.cuda, "graphs"):
+        torch.cuda.graphs.is_current_stream_capturing = lambda: False
+
+try:
+    import transformers.utils.import_utils
+    transformers.utils.import_utils.is_cuda_stream_capturing = lambda: False
+except Exception:
+    pass
 
 from pathlib import Path
 import json
@@ -141,6 +155,16 @@ index=None
 metadata=None
 
 
+def _get_rag_device():
+    try:
+        import torch
+        if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+            return "cuda"
+    except Exception:
+        pass
+    return "cpu"
+
+
 def _ensure_rag_loaded():
 
     global model,index,metadata
@@ -168,13 +192,6 @@ def _ensure_rag_loaded():
         )
 
 
-    print("Loading embedding model...")
-
-    model=SentenceTransformer(
-        MODEL_NAME
-    )
-
-
     print("Loading FAISS index...")
 
     index=faiss.read_index(
@@ -191,6 +208,14 @@ def _ensure_rag_loaded():
     ) as f:
 
         metadata=json.load(f)
+
+
+    print("Loading embedding model...")
+
+    model=SentenceTransformer(
+        MODEL_NAME,
+        device="cpu"
+    )
 
 
     print(
@@ -1855,6 +1880,17 @@ FOOTER PENALTY: {result['footer_penalty']}
 
 def get_rag_info():
 
+    try:
+        _ensure_rag_loaded()
+    except Exception as e:
+        return {
+            "provider":"FAISS",
+            "embedding_model":MODEL_NAME,
+            "index":"weather_index.faiss",
+            "available":False,
+            "error":str(e)
+        }
+
     return {
 
         "provider":"FAISS",
@@ -1863,9 +1899,9 @@ def get_rag_info():
 
         "index":"weather_index.faiss",
 
-        "vectors":index.ntotal,
+        "vectors":index.ntotal if index else 0,
 
-        "metadata_entries":len(metadata),
+        "metadata_entries":len(metadata) if metadata else 0,
 
         "top_k":DEFAULT_TOP_K,
 

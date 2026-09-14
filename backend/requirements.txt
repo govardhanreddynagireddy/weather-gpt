@@ -59,5 +59,4 @@ typing-inspection==0.4.4
 tzdata==2026.4
 urllib3==2.7.0
 uvicorn==0.52.4
--e file:///C:/Users/Kalyan/weather-gpt
 xarray==2026.7.0

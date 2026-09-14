@@ -1,3 +1,16 @@
+import os
+
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+# Guard against native access violation in PyTorch CUDA stream capture on CPU/Windows
+import torch
+if hasattr(torch, "cuda"):
+    torch.cuda.is_current_stream_capturing = lambda: False
+    if hasattr(torch.cuda, "graphs"):
+        torch.cuda.graphs.is_current_stream_capturing = lambda: False
+
 from pathlib import Path
 
 import numpy as np
@@ -59,9 +72,10 @@ PREDICTION_HORIZON="next_hour"
 # DEVICE
 # =====================================================
 
-device=torch.device(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)
+def _get_device():
+    return torch.device("cpu")
+
+device=_get_device()
 
 
 # =====================================================
@@ -103,63 +117,68 @@ class WeatherGRU(nn.Module):
 
 
 # =====================================================
-# CHECK REQUIRED FILES
+# LAZY-LOADED GRU STATE
 # =====================================================
 
-if not MODEL_PATH.exists():
+model=None
+feature_scaler=None
+target_scaler=None
 
-    raise FileNotFoundError(
-        f"GRU model not found: {MODEL_PATH}"
+
+def _ensure_gru_loaded():
+
+    global model,feature_scaler,target_scaler
+
+    if (
+        model is not None
+        and feature_scaler is not None
+        and target_scaler is not None
+    ):
+        return
+
+    if not MODEL_PATH.exists():
+        raise FileNotFoundError(
+            f"GRU model not found: {MODEL_PATH}"
+        )
+
+    if not FEATURE_SCALER_PATH.exists():
+        raise FileNotFoundError(
+            f"Feature scaler not found: {FEATURE_SCALER_PATH}"
+        )
+
+    if not TARGET_SCALER_PATH.exists():
+        raise FileNotFoundError(
+            f"Target scaler not found: {TARGET_SCALER_PATH}"
+        )
+
+    print("Loading WeatherGRU...")
+
+    dev=_get_device()
+
+    m=WeatherGRU().to(dev)
+
+    m.load_state_dict(
+        torch.load(
+            MODEL_PATH,
+            map_location=dev
+        )
     )
 
+    m.eval()
 
-if not FEATURE_SCALER_PATH.exists():
-
-    raise FileNotFoundError(
-        f"Feature scaler not found: "
-        f"{FEATURE_SCALER_PATH}"
+    fs=joblib.load(
+        FEATURE_SCALER_PATH
     )
 
-
-if not TARGET_SCALER_PATH.exists():
-
-    raise FileNotFoundError(
-        f"Target scaler not found: "
-        f"{TARGET_SCALER_PATH}"
+    ts=joblib.load(
+        TARGET_SCALER_PATH
     )
 
+    model=m
+    feature_scaler=fs
+    target_scaler=ts
 
-# =====================================================
-# LOAD MODEL
-# =====================================================
-
-print("Loading WeatherGRU...")
-
-model=WeatherGRU().to(device)
-
-model.load_state_dict(
-    torch.load(
-        MODEL_PATH,
-        map_location=device
-    )
-)
-
-model.eval()
-
-
-# =====================================================
-# LOAD SCALERS
-# =====================================================
-
-feature_scaler=joblib.load(
-    FEATURE_SCALER_PATH
-)
-
-target_scaler=joblib.load(
-    TARGET_SCALER_PATH
-)
-
-print("WeatherGRU ready")
+    print("WeatherGRU ready")
 
 
 # =====================================================
@@ -188,6 +207,8 @@ def predict_temperature(weather_data):
 
     Returned prediction is Celsius.
     """
+
+    _ensure_gru_loaded()
 
     # -------------------------------------------------
     # Convert input to NumPy

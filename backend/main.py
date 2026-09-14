@@ -15,6 +15,21 @@ import os
 import sys
 
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
+# Guard against native access violation in PyTorch CUDA stream capture on CPU/Windows
+import torch
+if hasattr(torch, "cuda"):
+    torch.cuda.is_current_stream_capturing = lambda: False
+    if hasattr(torch.cuda, "graphs"):
+        torch.cuda.graphs.is_current_stream_capturing = lambda: False
+
+try:
+    import transformers.utils.import_utils
+    transformers.utils.import_utils.is_cuda_stream_capturing = lambda: False
+except Exception:
+    pass
 
 # =====================================================
 # Force UTF-8 stdout so debug prints (🌡️, °C, etc.) show
@@ -184,7 +199,9 @@ def chat(request:ChatRequest):
 
                 "message":request.message,
 
-                "error":str(e)
+                "error":str(e),
+
+                "answer":f"⚠️ Server error processing request: {str(e)}"
 
             }
 
