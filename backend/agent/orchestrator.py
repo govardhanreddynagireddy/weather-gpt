@@ -5,15 +5,23 @@ from backend.tools.gru_tool import (
     predict_latest_temperature
 )
 
-from backend.services.ollama_service import (
-    generate_response
-)
-
 from backend.tools.rag_tool import (
     search_weather
 )
 
-from backend.tools.weather_api_tool import (
+# =====================================================
+# FIXED: this used to import from backend.tools.weather_api_tool,
+# which returns {location, temperature, humidity, wind_speed,
+# weather, rainfall}. Everything below in this file (and the
+# frontend) reads temperature_celsius / humidity_percent /
+# wind_speed_kmh / weather_description / precipitation_mm,
+# which is the schema returned by weather_tool, not
+# weather_api_tool. That mismatch is what produced "--" for
+# every field. weather_tool is also what main.py's /weather/{city}
+# endpoint already uses, so this makes the whole app consistent.
+# =====================================================
+
+from backend.tools.weather_tool import (
     get_weather,
     get_weather_forecast
 )
@@ -62,6 +70,121 @@ def extract_city(message):
 
 
 # =====================================================
+# BUILD TOMORROW FORECAST SUMMARY
+#
+# weather_tool.get_weather_forecast() returns a list of
+# 3-hourly OpenWeatherMap entries under "forecasts". The
+# frontend needs a single aggregated object instead:
+# date, max_temperature_celsius, min_temperature_celsius,
+# weather_description, precipitation_mm.
+# =====================================================
+
+def summarize_forecast(city,forecast_data):
+
+    entries=forecast_data.get(
+        "forecasts",
+        []
+    )
+
+    if not entries:
+
+        return {
+
+            "city":city,
+
+            "date":forecast_data.get(
+                "date"
+            ),
+
+            "max_temperature_celsius":"--",
+
+            "min_temperature_celsius":"--",
+
+            "weather_description":"--",
+
+            "precipitation_mm":0
+
+        }
+
+
+    temperatures=[
+        entry["temperature"]
+        for entry in entries
+        if "temperature" in entry
+    ]
+
+    max_temperature=round(
+        max(temperatures),
+        2
+    ) if temperatures else "--"
+
+    min_temperature=round(
+        min(temperatures),
+        2
+    ) if temperatures else "--"
+
+    total_precipitation=round(
+        sum(
+            entry.get("rainfall",0)
+            for entry in entries
+        ),
+        2
+    )
+
+
+    # -----------------------------------------------
+    # Representative condition: the entry closest to
+    # local midday, since that best represents "the"
+    # weather for the day rather than an early-morning
+    # or late-night reading.
+    # -----------------------------------------------
+
+    def hour_distance_from_noon(entry):
+
+        try:
+
+            hour=int(
+                entry["time"].split(":")[0]
+            )
+
+        except (KeyError,ValueError,IndexError):
+
+            return 99
+
+        return abs(hour-12)
+
+
+    representative=min(
+        entries,
+        key=hour_distance_from_noon
+    )
+
+    condition=representative.get(
+        "weather",
+        "--"
+    )
+
+
+    return {
+
+        "city":city,
+
+        "date":forecast_data.get(
+            "date"
+        ),
+
+        "max_temperature_celsius":max_temperature,
+
+        "min_temperature_celsius":min_temperature,
+
+        "weather_description":condition,
+
+        "precipitation_mm":total_precipitation
+
+    }
+
+
+# =====================================================
 # ORCHESTRATOR
 # =====================================================
 
@@ -72,6 +195,7 @@ def orchestrate(message):
     print("ORCHESTRATOR START")
     print("MESSAGE:",message)
     print("========================================")
+
 
     # =================================================
     # VALIDATE
@@ -86,6 +210,7 @@ def orchestrate(message):
 
     message=message.strip()
 
+
     # =================================================
     # ROUTING
     # =================================================
@@ -94,7 +219,10 @@ def orchestrate(message):
 
     tool=route_tool(message)
 
-    print("DEBUG 0: SELECTED TOOL =",tool)
+    print(
+        "DEBUG 0: SELECTED TOOL =",
+        tool
+    )
 
 
     # =================================================
@@ -110,7 +238,11 @@ def orchestrate(message):
 
         city=extract_city(message)
 
-        print("DEBUG WEATHER 1: CITY =",city)
+        print(
+            "DEBUG WEATHER 1: CITY =",
+            city
+        )
+
 
         days_ahead=0
 
@@ -118,14 +250,24 @@ def orchestrate(message):
 
             days_ahead=1
 
+
         print(
             "DEBUG WEATHER 2: DAYS AHEAD =",
             days_ahead
         )
 
+
+        # =================================================
+        # FETCH WEATHER
+        # =================================================
+
         try:
 
             if days_ahead==1:
+
+                print(
+                    "DEBUG WEATHER 3: GETTING FORECAST"
+                )
 
                 weather_data=get_weather_forecast(
                     city,
@@ -134,9 +276,14 @@ def orchestrate(message):
 
             else:
 
+                print(
+                    "DEBUG WEATHER 3: GETTING CURRENT WEATHER"
+                )
+
                 weather_data=get_weather(
                     city
                 )
+
 
         except Exception as e:
 
@@ -158,123 +305,111 @@ def orchestrate(message):
             }
 
 
-        print("DEBUG WEATHER 3: WEATHER API DONE")
+        print(
+            "DEBUG WEATHER 4: WEATHER API DONE"
+        )
 
-        # ---------------------------------------------
-        # RAG
-        # ---------------------------------------------
+        print(
+            "DEBUG WEATHER DATA:",
+            weather_data
+        )
 
-        rag_results=[]
 
-        try:
+        # =================================================
+        # CURRENT WEATHER
+        # =================================================
 
-            print("DEBUG WEATHER 4: STARTING RAG")
+        if days_ahead==0:
 
-            rag_results=search_weather(
-                message
+            temperature=weather_data.get(
+                "temperature_celsius",
+                "--"
             )
 
-            print(
-                "DEBUG WEATHER 5: RAG DONE"
+            humidity=weather_data.get(
+                "humidity_percent",
+                "--"
             )
 
-        except Exception as e:
-
-            print(
-                "DEBUG WEATHER RAG ERROR:",
-                str(e)
+            wind=weather_data.get(
+                "wind_speed_kmh",
+                "--"
             )
 
-            rag_results=[]
-
-
-        context=""
-
-        for i,result in enumerate(
-            rag_results,
-            1
-        ):
-
-            context+=f"""
-
-SOURCE {i}
-
-DOCUMENT:
-{result["source"]}
-
-CHUNK:
-{result["chunk_id"]}
-
-RELEVANCE:
-{result["score"]}
-
-TEXT:
-{result["text"]}
-
-"""
-
-
-        # ---------------------------------------------
-        # OLLAMA
-        # ---------------------------------------------
-
-        prompt=f"""
-You are WeatherGPT+, an AI weather assistant.
-
-Answer the user's question using the information
-provided below.
-
-LIVE WEATHER DATA:
-{weather_data}
-
-IMD RAG CONTEXT:
-{context}
-
-USER QUESTION:
-{message}
-
-IMPORTANT RULES:
-
-1. Use the live weather data for current conditions.
-
-2. Use IMD RAG context when relevant.
-
-3. Never invent weather values.
-
-4. Never invent temperatures, rainfall or warnings.
-
-5. If IMD context contains a relevant warning,
-   mention it.
-
-6. Keep the answer concise.
-
-7. Clearly distinguish live weather from IMD
-   forecast/warning information.
-
-Now answer the user.
-"""
-
-        print("DEBUG WEATHER 6: STARTING OLLAMA")
-
-        try:
-
-            answer=generate_response(
-                prompt
+            condition=weather_data.get(
+                "weather_description",
+                "--"
             )
 
-            print("DEBUG WEATHER 7: OLLAMA DONE")
-
-        except Exception as e:
-
-            print(
-                "DEBUG WEATHER OLLAMA ERROR:",
-                str(e)
+            rainfall=weather_data.get(
+                "precipitation_mm",
+                "--"
             )
+
 
             answer=(
-                f"Current weather in {city}: "
-                f"{weather_data}"
+                f"Current weather in {city}:\n\n"
+                f"🌡️ Temperature: {temperature} °C\n"
+                f"💧 Humidity: {humidity}%\n"
+                f"💨 Wind: {wind} km/h\n"
+                f"🌧️ Rain: {rainfall} mm\n"
+                f"🌤️ Condition: {condition}"
             )
+
+
+            print(
+                "DEBUG WEATHER 5: RESPONSE READY"
+            )
+
+
+            return {
+
+                "success":True,
+
+                "tool":"weather",
+
+                "type":"city_weather",
+
+                "message":message,
+
+                "weather":weather_data,
+
+                "weather_data":weather_data,
+
+                "rag_sources":[],
+
+                "answer":answer
+
+            }
+
+
+        # =================================================
+        # TOMORROW FORECAST
+        # =================================================
+
+        print(
+            "DEBUG WEATHER 5: BUILDING FORECAST SUMMARY"
+        )
+
+        forecast_summary=summarize_forecast(
+            city,
+            weather_data
+        )
+
+        print(
+            "DEBUG WEATHER FORECAST SUMMARY:",
+            forecast_summary
+        )
+
+
+        answer=(
+            f"Tomorrow's forecast for {city} "
+            f"({forecast_summary['date']}):\n\n"
+            f"🌡️ Max: {forecast_summary['max_temperature_celsius']} °C\n"
+            f"🌡️ Min: {forecast_summary['min_temperature_celsius']} °C\n"
+            f"🌧️ Precipitation: {forecast_summary['precipitation_mm']} mm\n"
+            f"🌤️ Condition: {forecast_summary['weather_description']}"
+        )
 
 
         return {
@@ -283,25 +418,13 @@ Now answer the user.
 
             "tool":"weather",
 
-            "type":"city_weather",
+            "type":"tomorrow_forecast",
 
             "message":message,
 
-            "weather":weather_data,
+            "forecast":forecast_summary,
 
-            "weather_data":weather_data,
-
-            "rag_sources":[
-
-                {
-                    "source":r["source"],
-                    "chunk_id":r["chunk_id"],
-                    "score":r["score"]
-                }
-
-                for r in rag_results
-
-            ],
+            "raw_forecast":weather_data,
 
             "answer":answer
 
@@ -309,9 +432,8 @@ Now answer the user.
 
 
     # =================================================
-    # GRU → NEXT HOUR TEMPERATURE
+    # GRU → NEXT HOUR
     # NO OLLAMA
-    # NO RAG
     # =================================================
 
     if tool=="gru":
@@ -321,17 +443,20 @@ Now answer the user.
         print("GRU DEBUG")
         print("========================================")
 
+
         print(
             "DEBUG GRU 1: GRU TOOL SELECTED"
         )
 
-        # ---------------------------------------------
-        # Prediction
-        # ---------------------------------------------
+
+        # =================================================
+        # PREDICTION
+        # =================================================
 
         print(
             "DEBUG GRU 2: STARTING GRU PREDICTION"
         )
+
 
         try:
 
@@ -369,9 +494,9 @@ Now answer the user.
         )
 
 
-        # ---------------------------------------------
-        # Model information
-        # ---------------------------------------------
+        # =================================================
+        # MODEL INFORMATION
+        # =================================================
 
         print(
             "DEBUG GRU 4: GETTING MODEL INFO"
@@ -379,16 +504,18 @@ Now answer the user.
 
         model_info=get_gru_info()
 
+
         print(
             "DEBUG GRU 5: MODEL INFO DONE"
         )
 
 
-        # ---------------------------------------------
-        # Extract temperature
-        # ---------------------------------------------
+        # =================================================
+        # EXTRACT TEMPERATURE
+        # =================================================
 
         predicted_temperature=prediction
+
 
         if isinstance(
             prediction,
@@ -408,30 +535,25 @@ Now answer the user.
 
 
         print(
-            "DEBUG GRU 6: PREPARING RESPONSE"
+            "DEBUG GRU 6: PREDICTED TEMPERATURE =",
+            predicted_temperature
         )
 
 
-        # ---------------------------------------------
+        # =================================================
         # DIRECT RESPONSE
-        #
-        # NO RAG
-        # NO OLLAMA
-        # ---------------------------------------------
+        # =================================================
 
         answer=(
-            "The WeatherGRU model predicts the "
-            f"next-hour temperature to be "
+            "📈 Next-hour temperature prediction:\n\n"
+            f"The WeatherGRU model predicts the "
+            f"temperature to be approximately "
             f"{predicted_temperature:.2f} °C."
         )
 
 
         print(
             "DEBUG GRU 7: RESPONSE READY"
-        )
-
-        print(
-            "DEBUG GRU 8: RETURNING RESPONSE"
         )
 
 
@@ -463,7 +585,8 @@ Now answer the user.
 
 
     # =================================================
-    # RAG → FAISS → OLLAMA
+    # RAG → FAISS
+    # NO OLLAMA
     # =================================================
 
     if tool=="rag":
@@ -473,9 +596,11 @@ Now answer the user.
         print("RAG DEBUG")
         print("========================================")
 
+
         print(
             "DEBUG RAG 1: SEARCHING DOCUMENTS"
         )
+
 
         try:
 
@@ -485,11 +610,18 @@ Now answer the user.
 
         except Exception as e:
 
+            print(
+                "DEBUG RAG ERROR:",
+                str(e)
+            )
+
             return {
 
                 "success":False,
 
                 "tool":"rag",
+
+                "type":"rag_error",
 
                 "message":message,
 
@@ -502,6 +634,15 @@ Now answer the user.
             "DEBUG RAG 2: SEARCH DONE"
         )
 
+        print(
+            "DEBUG RAG RESULTS:",
+            len(results)
+        )
+
+
+        # =================================================
+        # NO RESULTS
+        # =================================================
 
         if not results:
 
@@ -525,103 +666,46 @@ Now answer the user.
             }
 
 
-        context=""
+        # =================================================
+        # DIRECT RAG RESPONSE
+        # =================================================
+
+        answer="Relevant IMD information:\n\n"
+
 
         for i,result in enumerate(
             results,
             1
         ):
 
-            context+=f"""
-
-SOURCE {i}
-
-DOCUMENT:
-{result["source"]}
-
-CHUNK:
-{result["chunk_id"]}
-
-RELEVANCE:
-{result["score"]}
-
-TEXT:
-{result["text"]}
-
-"""
-
-
-        prompt=f"""
-You are WeatherGPT+, an official weather information
-assistant.
-
-Use ONLY the IMD context below.
-
-USER QUESTION:
-{message}
-
-IMD WEATHER CONTEXT:
-{context}
-
-RULES:
-
-1. Read all retrieved context.
-
-2. Use the latest relevant document.
-
-3. Pay attention to forecast dates.
-
-4. Do not invent weather information.
-
-5. Mention warnings when available.
-
-6. Keep the answer concise.
-
-Now answer the user directly.
-"""
-
-
-        print(
-            "DEBUG RAG 3: STARTING OLLAMA"
-        )
-
-        try:
-
-            answer=generate_response(
-                prompt
-            )
-
-            print(
-                "DEBUG RAG 4: OLLAMA DONE"
-            )
-
-        except Exception as e:
-
-            print(
-                "DEBUG RAG OLLAMA ERROR:",
-                str(e)
-            )
-
-            answer=(
-                "Relevant information was found "
-                "in the IMD documents, but the AI "
-                "response service is unavailable."
+            answer+=(
+                f"Source {i}:\n"
+                f"{result['text']}\n\n"
             )
 
 
         sources=[]
 
+
         for result in results:
 
             sources.append({
 
-                "source":result["source"],
+                "source":
+                    result["source"],
 
-                "chunk_id":result["chunk_id"],
+                "chunk_id":
+                    result["chunk_id"],
 
-                "score":result["score"]
+                "score":
+                    result["score"]
 
             })
+
+
+        print(
+            "DEBUG RAG 3: RESPONSE READY"
+        )
 
 
         return {
@@ -687,33 +771,12 @@ Now answer the user directly.
 
     # =================================================
     # FALLBACK
+    # NO OLLAMA
     # =================================================
 
     print(
-        "DEBUG FALLBACK: STARTING OLLAMA"
+        "DEBUG FALLBACK: NO TOOL MATCHED"
     )
-
-    try:
-
-        answer=generate_response(
-            f"""
-You are WeatherGPT+.
-
-User question:
-{message}
-
-Give a helpful and concise answer.
-
-Do not invent live weather information.
-"""
-        )
-
-    except Exception:
-
-        answer=(
-            "I couldn't generate an AI response "
-            "because the response service is unavailable."
-        )
 
 
     return {
@@ -722,8 +785,16 @@ Do not invent live weather information.
 
         "tool":"fallback",
 
+        "type":"fallback_response",
+
         "message":message,
 
-        "answer":answer
+        "answer":(
+            "I can help with:\n\n"
+            "🌤️ Current weather\n"
+            "🔮 Tomorrow's forecast\n"
+            "📈 Next-hour temperature prediction\n"
+            "📄 IMD weather information"
+        )
 
     }

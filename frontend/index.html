@@ -300,9 +300,7 @@
     </div>
 
 
-    <!-- =====================================================
-         WEATHER DASHBOARD
-    ====================================================== -->
+    <!-- WEATHER DASHBOARD -->
 
     <div class="weather-dashboard">
 
@@ -410,9 +408,7 @@
     </div>
 
 
-    <!-- =====================================================
-         QUICK BUTTONS
-    ====================================================== -->
+    <!-- QUICK BUTTONS -->
 
     <div class="quick-buttons">
 
@@ -431,9 +427,7 @@
     </div>
 
 
-    <!-- =====================================================
-         CHAT
-    ====================================================== -->
+    <!-- CHAT -->
 
     <div id="chat" class="chat">
 
@@ -459,9 +453,7 @@ Examples:
     </div>
 
 
-    <!-- =====================================================
-         INPUT
-    ====================================================== -->
+    <!-- INPUT -->
 
     <div class="input-area">
 
@@ -580,7 +572,7 @@ function addWeatherCard(weather) {
 
         <div class="weather-card-title">
 
-            🌤️ ${weather.location}
+            🌤️ ${weather.city}
 
         </div>
 
@@ -591,7 +583,7 @@ function addWeatherCard(weather) {
                 🌡️ Temperature:
 
                 <strong>
-                    ${weather.temperature} °C
+                    ${weather.temperature_celsius} °C
                 </strong>
 
             </div>
@@ -601,7 +593,7 @@ function addWeatherCard(weather) {
                 💧 Humidity:
 
                 <strong>
-                    ${weather.humidity}%
+                    ${weather.humidity_percent}%
                 </strong>
 
             </div>
@@ -611,7 +603,7 @@ function addWeatherCard(weather) {
                 💨 Wind:
 
                 <strong>
-                    ${weather.wind_speed} km/h
+                    ${weather.wind_speed_kmh} km/h
                 </strong>
 
             </div>
@@ -621,7 +613,7 @@ function addWeatherCard(weather) {
                 🌧️ Rain:
 
                 <strong>
-                    ${weather.rainfall} mm
+                    ${weather.precipitation_mm} mm
                 </strong>
 
             </div>
@@ -631,7 +623,7 @@ function addWeatherCard(weather) {
                 🌤️ Condition:
 
                 <strong>
-                    ${weather.weather}
+                    ${weather.weather_description}
                 </strong>
 
             </div>
@@ -765,8 +757,6 @@ async function loadWeather(city) {
 
     try {
 
-        /* Prevent undefined / empty city */
-
         if(
             !city ||
             city.trim()==="" ||
@@ -827,66 +817,64 @@ async function loadWeather(city) {
         }
 
 
-        /* =============================================
-           MATCH BACKEND RESPONSE
-
-           Backend:
-
-           {
-             location:"Kurnool",
-             temperature:32.56,
-             humidity:42,
-             wind_speed:2.2,
-             weather:"broken clouds",
-             rainfall:0
-           }
-        ============================================= */
+        /* =================================================
+           FIXED BACKEND FIELD NAMES
+           
+           Backend returns:
+           
+           city
+           temperature_celsius
+           humidity_percent
+           wind_speed_kmh
+           weather_description
+           precipitation_mm
+           ================================================= */
 
 
         document.getElementById(
             "weatherCity"
         ).textContent =
-            data.location +
+            data.city +
             ", India";
 
 
         document.getElementById(
             "currentTemperature"
         ).textContent =
-            data.temperature;
+            data.temperature_celsius;
 
 
         document.getElementById(
             "humidity"
         ).textContent =
-            data.humidity +
+            data.humidity_percent +
             "%";
 
 
         document.getElementById(
             "wind"
         ).textContent =
-            data.wind_speed +
+            data.wind_speed_kmh +
             " km/h";
 
 
         document.getElementById(
             "rain"
         ).textContent =
-            data.rainfall +
+            data.precipitation_mm +
             " mm";
 
 
         document.getElementById(
             "weatherDescription"
         ).textContent =
-            data.weather;
+            data.weather_description;
 
 
         document.getElementById(
             "cityInput"
         ).value =
-            data.location;
+            data.city;
 
     }
 
@@ -1193,9 +1181,9 @@ async function sendMessage() {
         typing.remove();
 
 
-        /* =============================================
+        /* =================================================
            CURRENT WEATHER
-        ============================================= */
+        ================================================= */
 
         if(
             data.type ===
@@ -1227,9 +1215,9 @@ async function sendMessage() {
         }
 
 
-        /* =============================================
+        /* =================================================
            TOMORROW FORECAST
-        ============================================= */
+        ================================================= */
 
         else if(
             data.type ===
@@ -1261,9 +1249,9 @@ async function sendMessage() {
         }
 
 
-        /* =============================================
+        /* =================================================
            GRU PREDICTION
-        ============================================= */
+        ================================================= */
 
         else if(
             data.type ===
@@ -1300,9 +1288,9 @@ async function sendMessage() {
         }
 
 
-        /* =============================================
+        /* =================================================
            GENERAL / RAG RESPONSE
-        ============================================= */
+        ================================================= */
 
         else {
 
@@ -1416,3 +1404,4 @@ window.addEventListener(
 </body>
 
 </html>
+

@@ -1,5 +1,38 @@
+# =====================================================
+# ENVIRONMENT GUARD — MUST RUN BEFORE torch / faiss /
+# sentence-transformers ARE IMPORTED ANYWHERE IN THE
+# PROCESS (directly or via orchestrator -> gru_tool /
+# rag_tool). This prevents the native OpenMP crash
+# ("OMP: Error #15: Initializing libiomp5md.dll, but
+# found libiomp5md.dll already initialized") that
+# happens on Windows when PyTorch's MKL runtime and
+# FAISS's OpenMP runtime both try to init in one
+# process. Without this, the process aborts natively
+# and no Python try/except can catch it.
+# =====================================================
+
+import os
+import sys
+
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
+# =====================================================
+# Force UTF-8 stdout so debug prints (🌡️, °C, etc.) show
+# correctly in PowerShell instead of as mojibake
+# (ðŸŒ¡, Â°C). JSON responses to the frontend were already
+# UTF-8 and unaffected by this — this only fixes what
+# you see in the terminal.
+# =====================================================
+
+if hasattr(sys.stdout, "reconfigure"):
+
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.agent.orchestrator import orchestrate
@@ -85,7 +118,29 @@ def health():
 @app.get("/weather/{city}")
 def weather(city:str):
 
-    return get_weather(city)
+    try:
+
+        return get_weather(city)
+
+    except Exception as e:
+
+        return JSONResponse(
+
+            status_code=502,
+
+            content={
+
+                "success":False,
+
+                "tool":"weather",
+
+                "type":"weather_error",
+
+                "error":str(e)
+
+            }
+
+        )
 
 
 # =====================================================
@@ -95,9 +150,42 @@ def weather(city:str):
 @app.post("/chat")
 def chat(request:ChatRequest):
 
-    result=orchestrate(
+    # =================================================
+    # orchestrate() already converts per-tool failures
+    # (weather / gru / rag) into JSON error dicts. This
+    # outer try/except is a last-resort safety net so
+    # that ANY unexpected exception in routing itself
+    # still returns JSON instead of a raw 500 / dropped
+    # connection.
+    # =================================================
 
-        request.message
-    )
+    try:
 
-    return result
+        result=orchestrate(
+
+            request.message
+        )
+
+        return result
+
+    except Exception as e:
+
+        return JSONResponse(
+
+            status_code=500,
+
+            content={
+
+                "success":False,
+
+                "tool":"unknown",
+
+                "type":"server_error",
+
+                "message":request.message,
+
+                "error":str(e)
+
+            }
+
+        )

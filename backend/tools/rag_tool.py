@@ -1,3 +1,15 @@
+# =====================================================
+# ENVIRONMENT GUARD - see identical note in backend/main.py.
+# Kept here too so this module is safe to import/run
+# standalone (e.g. "python -m backend.tools.rag_tool"),
+# not just through the FastAPI app.
+# =====================================================
+
+import os
+
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK","TRUE")
+
+
 from pathlib import Path
 import json
 import re
@@ -105,68 +117,106 @@ IMPACT_PENALTY=0.05
 
 
 # =====================================================
-# LOAD MODEL
+# LAZY-LOADED RAG STATE
+#
+# The embedding model, FAISS index and metadata used to
+# load eagerly at import time. That meant:
+#   1. Any failure (missing files, or a native crash from
+#      loading torch/faiss/sentence-transformers together)
+#      took the whole FastAPI app down at startup, before
+#      a single request could be served.
+#   2. A native crash (as opposed to a Python exception)
+#      could not be caught by orchestrator.py's try/except
+#      around search_weather(), which is what was silently
+#      killing /chat requests for RAG.
+#
+# Now these load once, lazily, on first RAG request, inside
+# _ensure_rag_loaded(). Genuine Python-level failures (missing
+# index/metadata files, bad JSON, etc.) now raise a normal
+# exception that orchestrator.py catches and returns as JSON.
 # =====================================================
 
-print("Loading embedding model...")
-
-model=SentenceTransformer(
-    MODEL_NAME
-)
+model=None
+index=None
+metadata=None
 
 
-# =====================================================
-# CHECK FILES
-# =====================================================
+def _ensure_rag_loaded():
 
-if not INDEX_PATH.exists():
+    global model,index,metadata
 
-    raise FileNotFoundError(
-        f"FAISS index not found: {INDEX_PATH}"
+    if (
+        model is not None
+        and index is not None
+        and metadata is not None
+    ):
+
+        return
+
+
+    if not INDEX_PATH.exists():
+
+        raise FileNotFoundError(
+            f"FAISS index not found: {INDEX_PATH}"
+        )
+
+
+    if not METADATA_PATH.exists():
+
+        raise FileNotFoundError(
+            f"Metadata file not found: {METADATA_PATH}"
+        )
+
+
+    print("Loading embedding model...")
+
+    model=SentenceTransformer(
+        MODEL_NAME
     )
 
 
-if not METADATA_PATH.exists():
+    print("Loading FAISS index...")
 
-    raise FileNotFoundError(
-        f"Metadata file not found: {METADATA_PATH}"
+    index=faiss.read_index(
+        str(INDEX_PATH)
     )
 
 
-# =====================================================
-# LOAD FAISS
-# =====================================================
+    print("Loading metadata...")
 
-print("Loading FAISS index...")
+    with open(
+        METADATA_PATH,
+        "r",
+        encoding="utf-8"
+    ) as f:
 
-index=faiss.read_index(
-    str(INDEX_PATH)
-)
-
-
-# =====================================================
-# LOAD METADATA
-# =====================================================
-
-print("Loading metadata...")
-
-with open(
-    METADATA_PATH,
-    "r",
-    encoding="utf-8"
-) as f:
-
-    metadata=json.load(f)
+        metadata=json.load(f)
 
 
-print(
-    f"Loaded {index.ntotal} vectors"
-)
+    print(
+        f"Loaded {index.ntotal} vectors"
+    )
 
-print(
-    f"Loaded {len(metadata)} metadata entries"
-)
+    print(
+        f"Loaded {len(metadata)} metadata entries"
+    )
 
+    global LATEST_DOCUMENT_DATE
+
+    LATEST_DOCUMENT_DATE=get_latest_document_date()
+
+    if LATEST_DOCUMENT_DATE:
+
+        print(
+            "Latest IMD document date:",
+            LATEST_DOCUMENT_DATE
+        )
+
+    else:
+
+        print(
+            "Latest IMD document date: Not detected"
+        )
 
 # =====================================================
 # DATE EXTRACTION FROM SOURCE
@@ -296,21 +346,9 @@ def get_latest_document_date():
     )
 
 
-LATEST_DOCUMENT_DATE=get_latest_document_date()
-
-
-if LATEST_DOCUMENT_DATE:
-
-    print(
-        "Latest IMD document date:",
-        LATEST_DOCUMENT_DATE
-    )
-
-else:
-
-    print(
-        "Latest IMD document date: Not detected"
-    )
+# Computed lazily inside _ensure_rag_loaded() on first
+# RAG request, not at import time (see note above).
+LATEST_DOCUMENT_DATE=None
 
 
 # =====================================================
@@ -1388,6 +1426,8 @@ def retrieve_weather_context(
     query,
     top_k=DEFAULT_TOP_K
 ):
+    _ensure_rag_loaded()
+
 
     if not query or not query.strip():
 
