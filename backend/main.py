@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from backend.agent.orchestrator import orchestrate
+from backend.tools.weather_tool import get_weather
 
 
 # =====================================================
@@ -75,6 +76,16 @@ def health():
 
         "status":"healthy"
     }
+
+
+# =====================================================
+# CURRENT WEATHER
+# =====================================================
+
+@app.get("/weather/{city}")
+def weather(city:str):
+
+    return get_weather(city)
 
 
 # =====================================================
