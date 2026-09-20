@@ -28,22 +28,43 @@ from backend.tools.rag_tool import (
     search_weather
 )
 
-# =====================================================
-# FIXED: this used to import from backend.tools.weather_api_tool,
-# which returns {location, temperature, humidity, wind_speed,
-# weather, rainfall}. Everything below in this file (and the
-# frontend) reads temperature_celsius / humidity_percent /
-# wind_speed_kmh / weather_description / precipitation_mm,
-# which is the schema returned by weather_tool, not
-# weather_api_tool. That mismatch is what produced "--" for
-# every field. weather_tool is also what main.py's /weather/{city}
-# endpoint already uses, so this makes the whole app consistent.
-# =====================================================
-
 from backend.tools.weather_tool import (
     get_weather,
     get_weather_forecast
 )
+
+from backend.services.gemini_service import generate_grounded_response
+from backend.services.risk_engine import calculate_risk
+from backend.services.impact_advisory import generate_advisory
+from backend.tools.historical_tool import compare_weather
+
+
+# =====================================================
+# TELUGU CITY MAPPING
+# =====================================================
+
+TELUGU_CITY_MAP = {
+    "కర్నూలు": "Kurnool",
+    "కర్నూలులో": "Kurnool",
+    "కడప": "Kadapa",
+    "కడపలో": "Kadapa",
+    "హైదరాబాద్": "Hyderabad",
+    "హైదరాబాద్‌లో": "Hyderabad",
+    "విజయవాడ": "Vijayawada",
+    "విజయవాడలో": "Vijayawada",
+    "తిరుపతి": "Tirupati",
+    "తిరుపతిలో": "Tirupati",
+    "విశాఖపట్నం": "Visakhapatnam",
+    "విశాఖపట్నంలో": "Visakhapatnam",
+    "అనంతపురం": "Anantapur",
+    "అనంతపురంలో": "Anantapur",
+    "గుంటూరు": "Guntur",
+    "గుంటూరులో": "Guntur",
+    "నెల్లూరు": "Nellore",
+    "నెల్లూరులో": "Nellore",
+    "వరంగల్": "Warangal",
+    "వరంగల్‌లో": "Warangal"
+}
 
 
 # =====================================================
@@ -54,6 +75,11 @@ def extract_city(message):
 
     if not message:
         return "Kurnool"
+
+    # Check known Telugu cities first
+    for telugu_name, eng_name in TELUGU_CITY_MAP.items():
+        if telugu_name in message:
+            return eng_name
 
     text = message.strip()
     for char in "?!.,:;\"'()[]{}":
@@ -208,12 +234,13 @@ def summarize_forecast(city,forecast_data):
 # ORCHESTRATOR
 # =====================================================
 
-def orchestrate(message):
+def orchestrate(message, language="en"):
 
     print()
     print("========================================")
     print("ORCHESTRATOR START")
     print("MESSAGE:",message)
+    print("LANGUAGE:",language)
     print("========================================")
 
 
@@ -226,7 +253,7 @@ def orchestrate(message):
         return {
             "success":False,
             "error":"Message cannot be empty.",
-            "answer":"⚠️ Message cannot be empty."
+            "answer":"⚠️ Message cannot be empty." if language == "en" else "⚠️ సందేశం ఖాళీగా ఉండకూడదు."
         }
 
     message=message.strip()
@@ -302,11 +329,29 @@ def orchestrate(message):
 
         answer="\n\n".join(answer_parts)
 
+        # Gemini NLG Grounding
+        structured_context = {
+            "tool": "weather_gru",
+            "city": city,
+            "current_weather": weather_data,
+            "gru_prediction": {
+                "predicted_temperature_celsius": predicted_temp,
+                "horizon": "next_hour",
+                "model": "WeatherGRU"
+            } if predicted_temp is not None else None,
+            "weather_error": weather_err,
+            "gru_error": gru_err
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
+
         return {
             "success":weather_data is not None or predicted_temp is not None,
             "tool":"weather_gru",
             "type":"city_weather",
             "message":message,
+            "language":language,
             "weather":weather_data,
             "weather_data":weather_data,
             "prediction":prediction,
@@ -323,7 +368,7 @@ def orchestrate(message):
     if tool=="weather_rag":
 
         city=extract_city(message)
-        days_ahead=1 if "tomorrow" in message.lower() else 0
+        days_ahead=1 if ("tomorrow" in message.lower() or "రేపు" in message) else 0
         weather_data=None
         weather_err=None
         results=[]
@@ -383,11 +428,27 @@ def orchestrate(message):
 
         answer="\n\n".join(answer_parts)
 
+        # Gemini NLG Grounding
+        structured_context = {
+            "tool": "weather_rag",
+            "city": city,
+            "days_ahead": days_ahead,
+            "weather": weather_data if days_ahead==0 else None,
+            "forecast": summarize_forecast(city,weather_data) if (days_ahead==1 and weather_data) else None,
+            "imd_bulletins": results[:3] if results else [],
+            "weather_error": weather_err,
+            "rag_error": rag_err
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
+
         return {
             "success":weather_data is not None or len(results)>0,
             "tool":"weather_rag",
             "type":"city_weather" if days_ahead==0 else "tomorrow_forecast",
             "message":message,
+            "language":language,
             "weather":weather_data if days_ahead==0 else None,
             "forecast":summarize_forecast(city,weather_data) if (days_ahead==1 and weather_data) else None,
             "sources":sources,
@@ -455,11 +516,28 @@ def orchestrate(message):
 
         answer="\n\n".join(answer_parts)
 
+        # Gemini NLG Grounding
+        structured_context = {
+            "tool": "gru_rag",
+            "gru_prediction": {
+                "predicted_temperature_celsius": predicted_temp,
+                "horizon": "next_hour",
+                "model": "WeatherGRU"
+            } if predicted_temp is not None else None,
+            "imd_bulletins": results[:3] if results else [],
+            "gru_error": gru_err,
+            "rag_error": rag_err
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
+
         return {
             "success":predicted_temp is not None or len(results)>0,
             "tool":"gru_rag",
             "type":"gru_prediction",
             "message":message,
+            "language":language,
             "prediction":prediction,
             "predicted_temperature_celsius":predicted_temp,
             "sources":sources,
@@ -485,19 +563,16 @@ def orchestrate(message):
             city
         )
 
-
         days_ahead=0
 
-        if "tomorrow" in message.lower():
+        if "tomorrow" in message.lower() or "రేపు" in message:
 
             days_ahead=1
-
 
         print(
             "DEBUG WEATHER 2: DAYS AHEAD =",
             days_ahead
         )
-
 
         # =================================================
         # FETCH WEATHER
@@ -526,7 +601,6 @@ def orchestrate(message):
                     city
                 )
 
-
         except Exception as e:
 
             print(
@@ -540,9 +614,10 @@ def orchestrate(message):
                     "tool":"weather",
                     "type":"tomorrow_forecast",
                     "message":message,
+                    "language":language,
                     "forecast":None,
                     "error":str(e),
-                    "answer":f"⚠️ Could not retrieve tomorrow's forecast for {city}: {str(e)}"
+                    "answer":f"⚠️ Could not retrieve tomorrow's forecast for {city}: {str(e)}" if language == "en" else f"⚠️ {city} కోసం రేపటి వాతావరణ సమాచారం పొందలేకపోయాము: {str(e)}"
                 }
 
             return {
@@ -550,23 +625,17 @@ def orchestrate(message):
                 "tool":"weather",
                 "type":"city_weather",
                 "message":message,
+                "language":language,
                 "weather":None,
                 "weather_data":None,
                 "rag_sources":[],
                 "error":str(e),
-                "answer":f"⚠️ Could not retrieve current weather for {city}: {str(e)}"
+                "answer":f"⚠️ Could not retrieve current weather for {city}: {str(e)}" if language == "en" else f"⚠️ {city} కోసం ప్రస్తుత వాతావరణ సమాచారం పొందలేకపోయాము: {str(e)}"
             }
-
 
         print(
             "DEBUG WEATHER 4: WEATHER API DONE"
         )
-
-        print(
-            "DEBUG WEATHER DATA:",
-            weather_data
-        )
-
 
         # =================================================
         # CURRENT WEATHER
@@ -599,94 +668,99 @@ def orchestrate(message):
                 "--"
             )
 
+            if language == "te":
+                answer=(
+                    f"{city} లో ప్రస్తుత వాతావరణం:\n\n"
+                    f"🌡️ ఉష్ణోగ్రత: {temperature} °C\n"
+                    f"💧 తేమ: {humidity}%\n"
+                    f"💨 గాలి వేగం: {wind} km/h\n"
+                    f"🌧️ వర్షపాతం: {rainfall} mm\n"
+                    f"🌤️ పరిస్థితి: {condition}"
+                )
+            else:
+                answer=(
+                    f"Current weather in {city}:\n\n"
+                    f"🌡️ Temperature: {temperature} °C\n"
+                    f"💧 Humidity: {humidity}%\n"
+                    f"💨 Wind: {wind} km/h\n"
+                    f"🌧️ Rain: {rainfall} mm\n"
+                    f"🌤️ Condition: {condition}"
+                )
 
-            answer=(
-                f"Current weather in {city}:\n\n"
-                f"🌡️ Temperature: {temperature} °C\n"
-                f"💧 Humidity: {humidity}%\n"
-                f"💨 Wind: {wind} km/h\n"
-                f"🌧️ Rain: {rainfall} mm\n"
-                f"🌤️ Condition: {condition}"
-            )
-
-
-            print(
-                "DEBUG WEATHER 5: RESPONSE READY"
-            )
-
+            # Gemini NLG Grounding
+            structured_context = {
+                "tool": "weather",
+                "city": city,
+                "current_weather": weather_data
+            }
+            gemini_answer = generate_grounded_response(message, structured_context, language)
+            if gemini_answer:
+                answer = gemini_answer
 
             return {
-
                 "success":True,
-
                 "tool":"weather",
-
                 "type":"city_weather",
-
                 "message":message,
-
+                "language":language,
                 "weather":weather_data,
-
                 "weather_data":weather_data,
-
                 "rag_sources":[],
-
                 "answer":answer
-
             }
-
 
         # =================================================
         # TOMORROW FORECAST
         # =================================================
-
-        print(
-            "DEBUG WEATHER 5: BUILDING FORECAST SUMMARY"
-        )
 
         forecast_summary=summarize_forecast(
             city,
             weather_data
         )
 
-        print(
-            "DEBUG WEATHER FORECAST SUMMARY:",
-            forecast_summary
-        )
+        if language == "te":
+            answer=(
+                f"{city} లో రేపటి వాతావరణ అంచనా "
+                f"({forecast_summary['date']}):\n\n"
+                f"🌡️ గరిష్ట ఉష్ణోగ్రత: {forecast_summary['max_temperature_celsius']} °C\n"
+                f"🌡️ కనిష్ట ఉష్ణోగ్రత: {forecast_summary['min_temperature_celsius']} °C\n"
+                f"🌧️ వర్షపాతం: {forecast_summary['precipitation_mm']} mm\n"
+                f"🌤️ పరిస్థితి: {forecast_summary['weather_description']}"
+            )
+        else:
+            answer=(
+                f"Tomorrow's forecast for {city} "
+                f"({forecast_summary['date']}):\n\n"
+                f"🌡️ Max: {forecast_summary['max_temperature_celsius']} °C\n"
+                f"🌡️ Min: {forecast_summary['min_temperature_celsius']} °C\n"
+                f"🌧️ Precipitation: {forecast_summary['precipitation_mm']} mm\n"
+                f"🌤️ Condition: {forecast_summary['weather_description']}"
+            )
 
-
-        answer=(
-            f"Tomorrow's forecast for {city} "
-            f"({forecast_summary['date']}):\n\n"
-            f"🌡️ Max: {forecast_summary['max_temperature_celsius']} °C\n"
-            f"🌡️ Min: {forecast_summary['min_temperature_celsius']} °C\n"
-            f"🌧️ Precipitation: {forecast_summary['precipitation_mm']} mm\n"
-            f"🌤️ Condition: {forecast_summary['weather_description']}"
-        )
-
+        # Gemini NLG Grounding
+        structured_context = {
+            "tool": "weather_forecast",
+            "city": city,
+            "forecast": forecast_summary
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
 
         return {
-
             "success":True,
-
             "tool":"weather",
-
             "type":"tomorrow_forecast",
-
             "message":message,
-
+            "language":language,
             "forecast":forecast_summary,
-
             "raw_forecast":weather_data,
-
             "answer":answer
-
         }
 
 
     # =================================================
     # GRU → NEXT HOUR
-    # NO OLLAMA
     # =================================================
 
     if tool=="gru":
@@ -696,158 +770,75 @@ def orchestrate(message):
         print("GRU DEBUG")
         print("========================================")
 
-
-        print(
-            "DEBUG GRU 1: GRU TOOL SELECTED"
-        )
-
-
-        # =================================================
-        # PREDICTION
-        # =================================================
-
-        print(
-            "DEBUG GRU 2: STARTING GRU PREDICTION"
-        )
-
-
         try:
-
-            prediction=(
-                predict_latest_temperature()
-            )
-
+            prediction=predict_latest_temperature()
         except Exception as e:
-
-            print(
-                "DEBUG GRU ERROR:",
-                str(e)
-            )
-
             return {
-
                 "success":False,
-
                 "tool":"gru",
-
                 "type":"gru_prediction",
-
                 "message":message,
-
+                "language":language,
                 "prediction":None,
-
                 "predicted_temperature_celsius":None,
-
                 "error":str(e),
-
                 "answer":f"⚠️ Could not compute GRU next-hour prediction: {str(e)}"
-
             }
-
-
-        print(
-            "DEBUG GRU 3: GRU PREDICTION DONE"
-        )
-
-        print(
-            "DEBUG GRU PREDICTION:",
-            prediction
-        )
-
-
-        # =================================================
-        # MODEL INFORMATION
-        # =================================================
-
-        print(
-            "DEBUG GRU 4: GETTING MODEL INFO"
-        )
 
         model_info=get_gru_info()
 
-
-        print(
-            "DEBUG GRU 5: MODEL INFO DONE"
-        )
-
-
-        # =================================================
-        # EXTRACT TEMPERATURE
-        # =================================================
-
         predicted_temperature=prediction
-
-
-        if isinstance(
-            prediction,
-            dict
-        ):
-
+        if isinstance(prediction, dict):
             predicted_temperature=prediction.get(
                 "prediction_celsius",
                 prediction.get(
                     "predicted_temperature_celsius",
-                    prediction.get(
-                        "prediction",
-                        prediction
-                    )
+                    prediction.get("prediction", prediction)
                 )
             )
 
+        if language == "te":
+            answer=(
+                "📈 తరువాతి గంట ఉష్ణోగ్రత అంచనా (WeatherGRU):\n\n"
+                f"మోడల్ అంచనా ప్రకారం తరువాతి గంటలో ఉష్ణోగ్రత సుమారు "
+                f"{predicted_temperature:.2f} °C ఉండవచ్చు."
+            )
+        else:
+            answer=(
+                "📈 Next-hour temperature prediction:\n\n"
+                f"The WeatherGRU model predicts the "
+                f"temperature to be approximately "
+                f"{predicted_temperature:.2f} °C."
+            )
 
-        print(
-            "DEBUG GRU 6: PREDICTED TEMPERATURE =",
-            predicted_temperature
-        )
-
-
-        # =================================================
-        # DIRECT RESPONSE
-        # =================================================
-
-        answer=(
-            "📈 Next-hour temperature prediction:\n\n"
-            f"The WeatherGRU model predicts the "
-            f"temperature to be approximately "
-            f"{predicted_temperature:.2f} °C."
-        )
-
-
-        print(
-            "DEBUG GRU 7: RESPONSE READY"
-        )
-
+        # Gemini NLG Grounding
+        structured_context = {
+            "tool": "gru",
+            "predicted_temperature_celsius": predicted_temperature,
+            "horizon": "next_hour",
+            "model": model_info
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
 
         return {
-
             "success":True,
-
             "tool":"gru",
-
             "type":"gru_prediction",
-
             "message":message,
-
+            "language":language,
             "prediction":prediction,
-
-            "predicted_temperature_celsius":
-                predicted_temperature,
-
+            "predicted_temperature_celsius":predicted_temperature,
             "model":model_info,
-
             "source":"era5_merged.nc",
-
-            "prediction_horizon":
-                "next_hour",
-
+            "prediction_horizon":"next_hour",
             "answer":answer
-
         }
 
 
     # =================================================
     # RAG → FAISS
-    # NO OLLAMA
     # =================================================
 
     if tool=="rag":
@@ -857,136 +848,69 @@ def orchestrate(message):
         print("RAG DEBUG")
         print("========================================")
 
-
-        print(
-            "DEBUG RAG 1: SEARCHING DOCUMENTS"
-        )
-
-
         try:
-
-            results=search_weather(
-                message
-            )
-
+            results=search_weather(message)
         except Exception as e:
-
-            print(
-                "DEBUG RAG ERROR:",
-                str(e)
-            )
-
             return {
-
                 "success":False,
-
                 "tool":"rag",
-
                 "type":"rag_response",
-
                 "message":message,
-
+                "language":language,
                 "sources":[],
-
                 "error":str(e),
-
                 "answer":f"⚠️ Could not search IMD documents: {str(e)}"
-
             }
-
-
-        print(
-            "DEBUG RAG 2: SEARCH DONE"
-        )
-
-        print(
-            "DEBUG RAG RESULTS:",
-            len(results)
-        )
-
-
-        # =================================================
-        # NO RESULTS
-        # =================================================
 
         if not results:
-
+            no_info_ans = (
+                "No relevant information was found in the IMD documents."
+                if language == "en" else
+                "IMD పత్రాలలో ఎటువంటి సంబంధిత సమాచారం కనుగొనబడలేదు."
+            )
             return {
-
                 "success":True,
-
                 "tool":"rag",
-
                 "type":"rag_response",
-
                 "message":message,
-
-                "answer":(
-                    "No relevant information was "
-                    "found in the IMD documents."
-                ),
-
+                "language":language,
+                "answer":no_info_ans,
                 "sources":[]
-
             }
 
-
-        # =================================================
-        # DIRECT RAG RESPONSE
-        # =================================================
-
         answer="Relevant IMD information:\n\n"
-
-
-        for i,result in enumerate(
-            results,
-            1
-        ):
-
+        for i,result in enumerate(results, 1):
             answer+=(
                 f"Source {i}:\n"
                 f"{result['text']}\n\n"
             )
 
-
         sources=[]
-
-
         for result in results:
-
             sources.append({
-
-                "source":
-                    result["source"],
-
-                "chunk_id":
-                    result["chunk_id"],
-
-                "score":
-                    result["score"]
-
+                "source":result["source"],
+                "chunk_id":result["chunk_id"],
+                "score":result["score"]
             })
 
-
-        print(
-            "DEBUG RAG 3: RESPONSE READY"
-        )
-
+        # Gemini NLG Grounding
+        structured_context = {
+            "tool": "rag",
+            "query": message,
+            "imd_bulletins": results[:4]
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
 
         return {
-
             "success":True,
-
             "tool":"rag",
-
             "type":"rag_response",
-
             "message":message,
-
+            "language":language,
             "answer":answer,
-
             "sources":sources
-
         }
 
 
@@ -996,19 +920,67 @@ def orchestrate(message):
 
     if tool=="historical":
 
-        return {
+        city=extract_city(message)
+        weather_data=None
+        try:
+            weather_data=get_weather(city)
+        except Exception:
+            pass
 
-            "success":True,
+        historical_data=compare_weather(city, weather_data or {})
 
-            "tool":"historical",
+        if historical_data.get("available"):
+            comp=historical_data["comparison"]
+            t_curr=comp["temperature"]["current"]
+            t_avg=comp["temperature"]["historical_average"]
+            t_diff=comp["temperature"]["difference"]
+            t_anom=comp["temperature"]["anomaly_percent"]
+            h_curr=comp["humidity"]["current"]
+            h_avg=comp["humidity"]["historical_average"]
+            w_curr=comp["wind_speed"]["current"]
+            w_avg=comp["wind_speed"]["historical_average"]
+            sign="+" if t_diff >= 0 else ""
 
-            "message":message,
-
-            "answer":(
-                "Historical weather analysis "
-                "is not connected yet."
+            if language == "te":
+                answer=(
+                    f"📊 {city} చారిత్రక వాతావరణ పోలిక:\n\n"
+                    f"🌡️ ప్రస్తుత ఉష్ణోగ్రత: {t_curr} °C (చారిత్రక సగటు: {t_avg} °C, తేడా: {sign}{t_diff} °C, వ్యత్యాసం: {t_anom}%)\n"
+                    f"💧 తేమ: {h_curr}% (చారిత్రక సగటు: {h_avg}%)\n"
+                    f"💨 గాలి వేగం: {w_curr} km/h (చారిత్రక సగటు: {w_avg} km/h)"
+                )
+            else:
+                answer=(
+                    f"📊 Historical Weather Comparison for {city}:\n\n"
+                    f"🌡️ Current Temp: {t_curr} °C (Historical Avg: {t_avg} °C, Diff: {sign}{t_diff} °C, Anomaly: {t_anom}%)\n"
+                    f"💧 Humidity: {h_curr}% (Historical Avg: {h_avg}%)\n"
+                    f"💨 Wind Speed: {w_curr} km/h (Historical Avg: {w_avg} km/h)"
+                )
+        else:
+            answer=(
+                f"⚠️ Historical data is not available for {city}."
+                if language == "en" else
+                f"⚠️ {city} కోసం చారిత్రక వాతావరణ సమాచారం అందుబాటులో లేదు."
             )
 
+        structured_context = {
+            "tool": "historical",
+            "city": city,
+            "current_weather": weather_data,
+            "historical_comparison": historical_data
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
+
+        return {
+            "success":True,
+            "tool":"historical",
+            "type":"historical_analysis",
+            "message":message,
+            "language":language,
+            "weather":weather_data,
+            "historical":historical_data,
+            "answer":answer
         }
 
 
@@ -1018,48 +990,113 @@ def orchestrate(message):
 
     if tool=="risk":
 
-        return {
+        city=extract_city(message)
+        weather_data=None
+        try:
+            weather_data=get_weather(city)
+        except Exception:
+            pass
 
-            "success":True,
+        historical_data=compare_weather(city, weather_data or {})
+        risk_data=calculate_risk(weather_data or {}, historical_data)
+        advisory_data=generate_advisory(weather_data or {}, risk_data)
 
-            "tool":"risk",
+        level=risk_data.get("risk_level", "LOW")
+        score=risk_data.get("risk_score", 0)
+        reasons_str=", ".join(risk_data.get("reasons", [])) or ("Normal conditions" if language == "en" else "సాధారణ పరిస్థితులు")
+        impacts_str="\n".join(f"• {imp}" for imp in advisory_data.get("possible_impacts", []))
+        recs_str="\n".join(f"• {rec}" for rec in advisory_data.get("recommendations", []))
 
-            "message":message,
-
-            "answer":(
-                "Weather risk analysis "
-                "is not connected yet."
+        if language == "te":
+            answer=(
+                f"⚠️ {city} వాతావరణ ప్రమాద అంచనా & సలహా:\n\n"
+                f"ప్రమాద స్థాయి: {level} (స్కోర్: {score}/100)\n"
+                f"ప్రధాన కారణాలు: {reasons_str}\n\n"
+                f"సాధ్యమయ్యే ప్రభావాలు:\n{impacts_str}\n\n"
+                f"సిఫార్సులు:\n{recs_str}"
+            )
+        else:
+            answer=(
+                f"⚠️ Weather Risk Analysis & Advisory for {city}:\n\n"
+                f"Risk Level: {level} (Score: {score}/100)\n"
+                f"Key Factors: {reasons_str}\n\n"
+                f"Possible Impacts:\n{impacts_str}\n\n"
+                f"Recommendations:\n{recs_str}"
             )
 
+        structured_context = {
+            "tool": "risk",
+            "city": city,
+            "current_weather": weather_data,
+            "risk": risk_data,
+            "advisory": advisory_data,
+            "historical": historical_data
+        }
+        gemini_answer = generate_grounded_response(message, structured_context, language)
+        if gemini_answer:
+            answer = gemini_answer
+
+        return {
+            "success":True,
+            "tool":"risk",
+            "type":"risk_advisory",
+            "message":message,
+            "language":language,
+            "weather":weather_data,
+            "risk":risk_data,
+            "advisory":advisory_data,
+            "historical":historical_data,
+            "answer":answer
         }
 
 
     # =================================================
     # FALLBACK
-    # NO OLLAMA
     # =================================================
 
     print(
         "DEBUG FALLBACK: NO TOOL MATCHED"
     )
 
-
-    return {
-
-        "success":True,
-
-        "tool":"fallback",
-
-        "type":"fallback_response",
-
-        "message":message,
-
-        "answer":(
+    if language == "te":
+        fallback_ans=(
+            "నేను ఈ క్రింది విషయాలలో సహాయం చేయగలను:\n\n"
+            "🌤️ ప్రస్తుత వాతావరణం\n"
+            "🔮 రేపటి వాతావరణ అంచనా\n"
+            "📈 తరువాతి గంట ఉష్ణోగ్రత అంచనా (WeatherGRU)\n"
+            "⚠️ వాతావరణ ప్రమాదం & వ్యవసాయ సలహాలు\n"
+            "📄 IMD అధికారిక సమాచారం & హెచ్చరికలు"
+        )
+    else:
+        fallback_ans=(
             "I can help with:\n\n"
             "🌤️ Current weather\n"
             "🔮 Tomorrow's forecast\n"
-            "📈 Next-hour temperature prediction\n"
-            "📄 IMD weather information"
+            "📈 Next-hour temperature prediction (WeatherGRU)\n"
+            "⚠️ Weather risk & agricultural advisories\n"
+            "📄 IMD weather bulletins & warnings"
         )
 
+    structured_context = {
+        "tool": "fallback",
+        "query": message,
+        "capabilities": [
+            "Current weather observation",
+            "Tomorrow's forecast",
+            "Next-hour WeatherGRU temperature prediction",
+            "Weather risk analysis & impact advisory",
+            "Official IMD bulletins and warnings via RAG"
+        ]
+    }
+    gemini_answer = generate_grounded_response(message, structured_context, language)
+    if gemini_answer:
+        fallback_ans = gemini_answer
+
+    return {
+        "success":True,
+        "tool":"fallback",
+        "type":"fallback_response",
+        "message":message,
+        "language":language,
+        "answer":fallback_ans
     }

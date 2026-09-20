@@ -8,7 +8,7 @@
     <meta name="viewport"
           content="width=device-width, initial-scale=1.0">
 
-    <title>WeatherGPT</title>
+    <title>WeatherGPT+ | Conversational Weather Intelligence</title>
 
     <style>
 
@@ -30,7 +30,7 @@
         .app {
             width: 95%;
             max-width: 850px;
-            height: 92vh;
+            height: 94vh;
             background: white;
             border-radius: 20px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.15);
@@ -40,22 +40,62 @@
         }
 
         .header {
-            padding: 20px;
+            padding: 16px 20px;
             background: linear-gradient(135deg,#2196f3,#1565c0);
             color: white;
         }
 
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .header h1 {
-            font-size: 28px;
+            font-size: 26px;
         }
 
         .header p {
-            margin-top: 5px;
+            margin-top: 4px;
             opacity: 0.9;
+            font-size: 13px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .control-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.5);
+            color: white;
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background 0.2s;
+        }
+
+        .control-btn:hover {
+            background: rgba(255,255,255,0.35);
+        }
+
+        .lang-select {
+            background: white;
+            border: 1px solid #1565c0;
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-weight: bold;
+            color: #1565c0;
+            cursor: pointer;
+            font-size: 13px;
+            outline: none;
         }
 
         .weather-dashboard {
-            padding: 18px;
+            padding: 16px;
             text-align: center;
             background: #f0f8ff;
             border-bottom: 1px solid #dceaf5;
@@ -65,12 +105,12 @@
             display: flex;
             justify-content: center;
             gap: 8px;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
 
         .city-search input {
             width: 65%;
-            padding: 12px;
+            padding: 10px 14px;
             border: 1px solid #ccc;
             border-radius: 10px;
             outline: none;
@@ -91,8 +131,8 @@
         }
 
         .city-search button {
-            padding: 10px 18px;
-            font-size: 15px;
+            padding: 9px 16px;
+            font-size: 14px;
         }
 
         .city-search button:hover,
@@ -102,38 +142,39 @@
         }
 
         .location {
-            font-size: 21px;
+            font-size: 20px;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .main-temperature {
-            font-size: 48px;
+            font-size: 42px;
             font-weight: bold;
-            margin: 5px 0;
+            margin: 4px 0;
             color: #1565c0;
         }
 
         #weatherDescription {
             color: #666;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
+            font-size: 14px;
         }
 
         .weather-stats {
             display: flex;
             justify-content: center;
-            gap: 55px;
-            margin: 15px 0;
+            gap: 45px;
+            margin: 10px 0;
         }
 
         .stat {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 3px;
         }
 
         .stat strong {
-            font-size: 17px;
+            font-size: 16px;
         }
 
         .stat span {
@@ -141,26 +182,96 @@
             color: #777;
         }
 
+        /* ALERTS CONTAINER */
+        .alerts-container {
+            margin: 10px auto;
+            max-width: 95%;
+            text-align: left;
+        }
+
+        .alert-card {
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        .alert-card.high {
+            background: #ffebee;
+            border-left: 5px solid #d32f2f;
+            color: #b71c1c;
+        }
+
+        .alert-card.medium {
+            background: #fff8e1;
+            border-left: 5px solid #ffa000;
+            color: #e65100;
+        }
+
+        .alert-card.low {
+            background: #e8f5e9;
+            border-left: 5px solid #388e3c;
+            color: #1b5e20;
+        }
+
+        .alert-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: bold;
+        }
+
+        .alert-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        .alert-badge.high { background: #d32f2f; }
+        .alert-badge.medium { background: #f57c00; }
+        .alert-badge.low { background: #388e3c; }
+
+        .alert-body {
+            font-size: 12.5px;
+            color: #333;
+        }
+
+        .alert-recommendations {
+            margin-top: 4px;
+            font-size: 12px;
+            color: #444;
+            padding-left: 16px;
+        }
+
         .refresh-button {
-            padding: 9px 17px;
-            font-size: 14px;
+            padding: 7px 15px;
+            font-size: 13px;
+            margin-top: 5px;
         }
 
         .quick-buttons {
-            padding: 10px 15px;
+            padding: 8px 15px;
             display: flex;
             gap: 8px;
             flex-wrap: wrap;
             background: white;
+            border-bottom: 1px solid #eee;
         }
 
         .quick-buttons button {
             border: 1px solid #b9d9f5;
             background: #f0f8ff;
-            padding: 9px 14px;
-            border-radius: 20px;
+            padding: 7px 12px;
+            border-radius: 16px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
+            transition: background 0.15s;
         }
 
         .quick-buttons button:hover {
@@ -169,14 +280,14 @@
 
         .chat {
             flex: 1;
-            padding: 20px;
+            padding: 16px;
             overflow-y: auto;
             background: #f7fbff;
         }
 
         .message {
             display: flex;
-            margin-bottom: 15px;
+            margin-bottom: 14px;
         }
 
         .message.user {
@@ -184,11 +295,12 @@
         }
 
         .bubble {
-            max-width: 75%;
-            padding: 13px 17px;
+            max-width: 80%;
+            padding: 12px 16px;
             border-radius: 16px;
             line-height: 1.5;
             white-space: pre-wrap;
+            font-size: 14.5px;
         }
 
         .bot .bubble {
@@ -204,18 +316,18 @@
 
         .weather-card {
             margin-top: 10px;
-            padding: 15px;
-            border-radius: 14px;
+            padding: 12px;
+            border-radius: 12px;
             background: #eef8ff;
             border: 1px solid #cce8ff;
         }
 
         .weather-card div {
-            margin: 7px 0;
+            margin: 5px 0;
         }
 
         .weather-card-title {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
         }
 
@@ -223,23 +335,57 @@
             color: #777;
             font-style: italic;
             margin-bottom: 10px;
+            font-size: 13px;
         }
 
         .input-area {
             display: flex;
-            padding: 15px;
+            padding: 12px 16px;
             border-top: 1px solid #ddd;
             background: white;
-            gap: 10px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .mic-btn {
+            width: 44px;
+            height: 44px;
+            border: 1px solid #b9d9f5;
+            border-radius: 12px;
+            background: #f0f8ff;
+            color: #1565c0;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .mic-btn:hover {
+            background: #e1f0fc;
+        }
+
+        .mic-btn.listening {
+            background: #ffebee;
+            border-color: #f44336;
+            color: #d32f2f;
+            animation: pulse-recording 1.2s infinite;
+        }
+
+        @keyframes pulse-recording {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244,67,54,0.4); }
+            70% { transform: scale(1.06); box-shadow: 0 0 0 8px rgba(244,67,54,0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(244,67,54,0); }
         }
 
         #messageInput {
             flex: 1;
-            padding: 14px;
+            padding: 12px 14px;
             border: 1px solid #ccc;
             border-radius: 12px;
             outline: none;
-            font-size: 15px;
+            font-size: 14.5px;
         }
 
         #messageInput:focus {
@@ -247,13 +393,14 @@
         }
 
         #sendButton {
-            padding: 0 23px;
+            padding: 0 20px;
+            height: 44px;
             border: none;
             border-radius: 12px;
             background: #2196f3;
             color: white;
             cursor: pointer;
-            font-size: 15px;
+            font-size: 14.5px;
         }
 
         #sendButton:disabled {
@@ -281,6 +428,10 @@
                 width: 65%;
             }
 
+            .header h1 {
+                font-size: 20px;
+            }
+
         }
 
     </style>
@@ -293,9 +444,24 @@
 
     <div class="header">
 
-        <h1>🌤️ WeatherGPT</h1>
+        <div class="header-content">
 
-        <p>Your AI weather assistant</p>
+            <div>
+                <h1 id="headerTitle">🌤️ WeatherGPT+</h1>
+                <p id="headerSubtitle">Conversational Weather Intelligence</p>
+            </div>
+
+            <div class="header-controls">
+                <button id="ttsToggle" class="control-btn" onclick="toggleTTS()" title="Voice Output Toggle">
+                    🔊
+                </button>
+                <select id="langSelect" class="lang-select" onchange="changeLanguage(this.value)">
+                    <option value="en">English</option>
+                    <option value="te">తెలుగు</option>
+                </select>
+            </div>
+
+        </div>
 
     </div>
 
@@ -314,7 +480,7 @@
                 autocomplete="off"
             >
 
-            <button onclick="searchCity()">
+            <button id="searchBtn" onclick="searchCity()">
                 🔍 Search
             </button>
 
@@ -358,7 +524,7 @@
                     --
                 </strong>
 
-                <span>
+                <span id="labelHumidity">
                     Humidity
                 </span>
 
@@ -373,7 +539,7 @@
                     --
                 </strong>
 
-                <span>
+                <span id="labelWind">
                     Wind
                 </span>
 
@@ -388,7 +554,7 @@
                     --
                 </strong>
 
-                <span>
+                <span id="labelRain">
                     Rain
                 </span>
 
@@ -396,8 +562,22 @@
 
         </div>
 
+        <!-- ALERTS BANNER -->
+        <div id="alertsContainer" class="alerts-container">
+            <div id="alertCard" class="alert-card low">
+                <div class="alert-header">
+                    <span id="alertTitle">⚡ Weather Advisory</span>
+                    <span id="alertBadge" class="alert-badge low">ALL CLEAR</span>
+                </div>
+                <div id="alertMessage" class="alert-body">
+                    Loading weather advisories...
+                </div>
+                <ul id="alertRecommendations" class="alert-recommendations" style="display:none;"></ul>
+            </div>
+        </div>
 
         <button
+            id="refreshBtn"
             class="refresh-button"
             onclick="refreshWeather()">
 
@@ -412,16 +592,20 @@
 
     <div class="quick-buttons">
 
-        <button onclick="askCurrentWeather()">
+        <button id="btnCurrent" onclick="askCurrentWeather()">
             🌡️ Current Weather
         </button>
 
-        <button onclick="askTomorrow()">
+        <button id="btnTomorrow" onclick="askTomorrow()">
             🔮 Tomorrow
         </button>
 
-        <button onclick="askNextHour()">
+        <button id="btnNextHour" onclick="askNextHour()">
             📈 Next Hour
+        </button>
+
+        <button id="btnRisk" onclick="askRisk()">
+            ⚠️ Risk & Advisory
         </button>
 
     </div>
@@ -433,19 +617,15 @@
 
         <div class="message bot">
 
-            <div class="bubble">
+            <div id="welcomeBubble" class="bubble">
+Hello! 👋 I'm WeatherGPT+, your grounded weather intelligence assistant.
 
-Hello! 👋 I'm WeatherGPT.
-
-Ask me anything about the weather.
-
-Examples:
-
-• What is the weather in Kurnool?
-• What is the weather in Kadapa?
-• What will the weather be tomorrow in Kurnool?
-• What will the temperature be next hour?
-
+Ask me anything about the weather:
+• What is the current weather in Kurnool?
+• What is the next-hour temperature prediction?
+• Are there any IMD warnings or rain forecasts?
+• What is the weather risk for farmers?
+• తెలుగులో సమాచారం కావాలంటే పైన 'తెలుగు' ఎంచుకోండి.
             </div>
 
         </div>
@@ -456,6 +636,10 @@ Examples:
     <!-- INPUT -->
 
     <div class="input-area">
+
+        <button id="micButton" class="mic-btn" onclick="toggleVoiceInput()" title="Voice Input">
+            🎙️
+        </button>
 
         <input
             id="messageInput"
@@ -480,71 +664,242 @@ Examples:
 <script>
 
 /* =====================================================
-   RAILWAY BACKEND
+   CONFIGURABLE BACKEND API URL
 ===================================================== */
 
-const API_URL =
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.protocol === "file:")
-        ? "http://127.0.0.1:8000"
-        : "https://weather-gpt-production-4837.up.railway.app";
+function getApiBaseUrl() {
+    if (window.WEATHERGPT_API_URL) {
+        return window.WEATHERGPT_API_URL;
+    }
+    const stored = localStorage.getItem("weathergpt_api_url");
+    if (stored) {
+        return stored;
+    }
+    if (
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.protocol === "file:"
+    ) {
+        return "http://127.0.0.1:8000";
+    }
+    return window.location.origin;
+}
+
+const API_URL = getApiBaseUrl();
+
+
+/* =====================================================
+   LOCALIZATION STRINGS
+===================================================== */
+
+let currentLanguage = localStorage.getItem("weathergpt_lang") || "en";
+let ttsEnabled = localStorage.getItem("weathergpt_tts") !== "false";
+
+const I18N = {
+    en: {
+        title: "🌤️ WeatherGPT+",
+        subtitle: "Conversational Weather Intelligence",
+        searchPlaceholder: "Enter city...",
+        searchBtn: "🔍 Search",
+        refreshBtn: "🔄 Refresh Weather",
+        humidity: "Humidity",
+        wind: "Wind",
+        rain: "Rain",
+        btnCurrent: "🌡️ Current Weather",
+        btnTomorrow: "🔮 Tomorrow",
+        btnNextHour: "📈 Next Hour",
+        btnRisk: "⚠️ Risk & Advisory",
+        inputPlaceholder: "Ask about the weather...",
+        sendBtn: "Send",
+        thinking: "WeatherGPT+ is thinking...",
+        welcome: "Hello! 👋 I'm WeatherGPT+, your grounded weather intelligence assistant.\n\nAsk me anything about the weather:\n• What is the current weather in Kurnool?\n• What is the next-hour temperature prediction?\n• Are there any IMD warnings or rain forecasts?\n• What is the weather risk for farmers?\n• Switch to 'తెలుగు' anytime from the top bar!",
+        allClear: "No severe weather alerts active for this location.",
+        voiceUnsupported: "Voice input is not supported in this browser. Please use text input."
+    },
+    te: {
+        title: "🌤️ వెదర్‌జిపిటి+",
+        subtitle: "తెలివైన వాతావరణ సహాయకుడు",
+        searchPlaceholder: "నగరం పేరు నమోదు చేయండి...",
+        searchBtn: "🔍 వెతకండి",
+        refreshBtn: "🔄 వాతావరణాన్ని రీఫ్రెష్ చేయండి",
+        humidity: "తేమ",
+        wind: "గాలి వేగం",
+        rain: "వర్షం",
+        btnCurrent: "🌡️ ప్రస్తుత వాతావరణం",
+        btnTomorrow: "🔮 రేపటి వాతావరణం",
+        btnNextHour: "📈 తరువాతి గంట",
+        btnRisk: "⚠️ ప్రమాదం & సలహా",
+        inputPlaceholder: "వాతావరణం గురించి అడగండి...",
+        sendBtn: "పంపండి",
+        thinking: "వెదర్‌జిపిటి+ ఆలోచిస్తోంది...",
+        welcome: "నమస్కారం! 👋 నేను వెదర్‌జిపిటి+ (WeatherGPT+), మీ నమ్మకమైన వాతావరణ సహాయకుడిని.\n\nనన్ను వాతావరణం గురించి ఏమైనా అడగండి:\n• కర్నూలులో ప్రస్తుత వాతావరణం ఎలా ఉంది?\n• తరువాతి గంట ఉష్ణోగ్రత ఎంత ఉండవచ్చు?\n• ఏదైనా IMD హెచ్చరిక లేదా వర్ష సూచన ఉందా?\n• రైతులకు ఎలాంటి వాతావరణ సలహాలు ఉన్నాయి?",
+        allClear: "ఈ ప్రాంతానికి ఎటువంటి తీవ్రమైన వాతావరణ హెచ్చరికలు లేవు.",
+        voiceUnsupported: "ఈ బ్రౌజర్‌లో వాయిస్ ఇన్‌పుట్ సపోర్ట్ చేయదు. దయచేసి టైప్ చేయండి."
+    }
+};
 
 
 /* =====================================================
    ELEMENTS
 ===================================================== */
 
-const input =
-    document.getElementById(
-        "messageInput"
-    );
+const input = document.getElementById("messageInput");
+const sendButton = document.getElementById("sendButton");
+const chat = document.getElementById("chat");
+const micButton = document.getElementById("micButton");
+const ttsToggle = document.getElementById("ttsToggle");
+const langSelect = document.getElementById("langSelect");
 
-const sendButton =
-    document.getElementById(
-        "sendButton"
-    );
 
-const chat =
-    document.getElementById(
-        "chat"
-    );
+/* =====================================================
+   LANGUAGE SWITCHER
+===================================================== */
+
+function changeLanguage(lang) {
+    currentLanguage = lang;
+    localStorage.setItem("weathergpt_lang", lang);
+    langSelect.value = lang;
+
+    const t = I18N[lang] || I18N.en;
+    document.getElementById("headerTitle").textContent = t.title;
+    document.getElementById("headerSubtitle").textContent = t.subtitle;
+    document.getElementById("cityInput").placeholder = t.searchPlaceholder;
+    document.getElementById("searchBtn").textContent = t.searchBtn;
+    document.getElementById("refreshBtn").textContent = t.refreshBtn;
+    document.getElementById("labelHumidity").textContent = t.humidity;
+    document.getElementById("labelWind").textContent = t.wind;
+    document.getElementById("labelRain").textContent = t.rain;
+    document.getElementById("btnCurrent").textContent = t.btnCurrent;
+    document.getElementById("btnTomorrow").textContent = t.btnTomorrow;
+    document.getElementById("btnNextHour").textContent = t.btnNextHour;
+    document.getElementById("btnRisk").textContent = t.btnRisk;
+    document.getElementById("messageInput").placeholder = t.inputPlaceholder;
+    document.getElementById("sendButton").textContent = t.sendBtn;
+}
+
+
+/* =====================================================
+   TTS (VOICE OUTPUT)
+===================================================== */
+
+function toggleTTS() {
+    ttsEnabled = !ttsEnabled;
+    localStorage.setItem("weathergpt_tts", ttsEnabled);
+    ttsToggle.textContent = ttsEnabled ? "🔊" : "🔇";
+    ttsToggle.title = ttsEnabled ? "Voice Output: ON" : "Voice Output: OFF";
+}
+
+function speakText(text) {
+    if (!ttsEnabled || !window.speechSynthesis) return;
+
+    window.speechSynthesis.cancel();
+
+    // Clean emojis and markdown formatting for clean speech
+    const cleanText = text
+        .replace(/[\u{1F600}-\u{1F6FF}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+        .replace(/[*_#`~]/g, '')
+        .trim();
+
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = currentLanguage === "te" ? "te-IN" : "en-IN";
+    utterance.rate = 1.0;
+
+    window.speechSynthesis.speak(utterance);
+}
+
+
+/* =====================================================
+   STT (VOICE INPUT)
+===================================================== */
+
+let recognition = null;
+let isRecording = false;
+
+function initSpeechRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        return null;
+    }
+    const rec = new SpeechRecognition();
+    rec.continuous = false;
+    rec.interimResults = false;
+
+    rec.onstart = function() {
+        isRecording = true;
+        micButton.classList.add("listening");
+        micButton.title = "Listening... Click to stop";
+    };
+
+    rec.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        if (transcript) {
+            input.value = transcript;
+            sendMessage();
+        }
+    };
+
+    rec.onerror = function(event) {
+        console.warn("Speech recognition error:", event.error);
+        stopRecording();
+    };
+
+    rec.onend = function() {
+        stopRecording();
+    };
+
+    return rec;
+}
+
+function stopRecording() {
+    isRecording = false;
+    micButton.classList.remove("listening");
+    micButton.title = "Voice Input";
+}
+
+function toggleVoiceInput() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        const t = I18N[currentLanguage] || I18N.en;
+        alert(t.voiceUnsupported);
+        return;
+    }
+
+    if (!recognition) {
+        recognition = initSpeechRecognition();
+    }
+
+    if (isRecording) {
+        recognition.stop();
+        stopRecording();
+    } else {
+        recognition.lang = currentLanguage === "te" ? "te-IN" : "en-IN";
+        try {
+            recognition.start();
+        } catch (e) {
+            console.error("Speech recognition start failed:", e);
+            stopRecording();
+        }
+    }
+}
 
 
 /* =====================================================
    ADD CHAT MESSAGE
 ===================================================== */
 
-function addMessage(text,type) {
+function addMessage(text, type) {
+    const message = document.createElement("div");
+    message.className = "message " + type;
 
-    const message =
-        document.createElement(
-            "div"
-        );
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
 
-    message.className =
-        "message " + type;
-
-    const bubble =
-        document.createElement(
-            "div"
-        );
-
-    bubble.className =
-        "bubble";
-
-    bubble.textContent =
-        text;
-
-    message.appendChild(
-        bubble
-    );
-
-    chat.appendChild(
-        message
-    );
-
-    chat.scrollTop =
-        chat.scrollHeight;
-
+    message.appendChild(bubble);
+    chat.appendChild(message);
+    chat.scrollTop = chat.scrollHeight;
 }
 
 
@@ -553,98 +908,28 @@ function addMessage(text,type) {
 ===================================================== */
 
 function addWeatherCard(weather) {
+    const message = document.createElement("div");
+    message.className = "message bot";
 
-    const message =
-        document.createElement(
-            "div"
-        );
-
-    message.className =
-        "message bot";
-
-    const bubble =
-        document.createElement(
-            "div"
-        );
-
-    bubble.className =
-        "bubble";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
 
     bubble.innerHTML = `
-
         <div class="weather-card-title">
-
-            🌤️ ${weather.city}
-
+            🌤️ ${weather.city || "Weather"}
         </div>
-
         <div class="weather-card">
-
-            <div>
-
-                🌡️ Temperature:
-
-                <strong>
-                    ${weather.temperature_celsius} °C
-                </strong>
-
-            </div>
-
-            <div>
-
-                💧 Humidity:
-
-                <strong>
-                    ${weather.humidity_percent}%
-                </strong>
-
-            </div>
-
-            <div>
-
-                💨 Wind:
-
-                <strong>
-                    ${weather.wind_speed_kmh} km/h
-                </strong>
-
-            </div>
-
-            <div>
-
-                🌧️ Rain:
-
-                <strong>
-                    ${weather.precipitation_mm} mm
-                </strong>
-
-            </div>
-
-            <div>
-
-                🌤️ Condition:
-
-                <strong>
-                    ${weather.weather_description}
-                </strong>
-
-            </div>
-
+            <div>🌡️ Temperature: <strong>${weather.temperature_celsius} °C</strong></div>
+            <div>💧 Humidity: <strong>${weather.humidity_percent}%</strong></div>
+            <div>💨 Wind: <strong>${weather.wind_speed_kmh} km/h</strong></div>
+            <div>🌧️ Rain: <strong>${weather.precipitation_mm} mm</strong></div>
+            <div>🌤️ Condition: <strong>${weather.weather_description}</strong></div>
         </div>
-
     `;
 
-    message.appendChild(
-        bubble
-    );
-
-    chat.appendChild(
-        message
-    );
-
-    chat.scrollTop =
-        chat.scrollHeight;
-
+    message.appendChild(bubble);
+    chat.appendChild(message);
+    chat.scrollTop = chat.scrollHeight;
 }
 
 
@@ -653,101 +938,87 @@ function addWeatherCard(weather) {
 ===================================================== */
 
 function addForecastCard(forecast) {
+    const message = document.createElement("div");
+    message.className = "message bot";
 
-    const message =
-        document.createElement(
-            "div"
-        );
-
-    message.className =
-        "message bot";
-
-    const bubble =
-        document.createElement(
-            "div"
-        );
-
-    bubble.className =
-        "bubble";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
 
     bubble.innerHTML = `
-
         <div class="weather-card-title">
-
-            🔮 ${forecast.city || forecast.location}
-
+            🔮 ${forecast.city || forecast.location || "Forecast"}
         </div>
-
         <div class="weather-card">
-
-            <div>
-
-                📅 Date:
-
-                <strong>
-                    ${forecast.date}
-                </strong>
-
-            </div>
-
-            <div>
-
-                🌡️ Maximum:
-
-                <strong>
-                    ${forecast.max_temperature_celsius}
-                    °C
-                </strong>
-
-            </div>
-
-            <div>
-
-                🌡️ Minimum:
-
-                <strong>
-                    ${forecast.min_temperature_celsius}
-                    °C
-                </strong>
-
-            </div>
-
-            <div>
-
-                🌤️ Condition:
-
-                <strong>
-                    ${forecast.weather_description}
-                </strong>
-
-            </div>
-
-            <div>
-
-                🌧️ Precipitation:
-
-                <strong>
-                    ${forecast.precipitation_mm}
-                    mm
-                </strong>
-
-            </div>
-
+            <div>📅 Date: <strong>${forecast.date}</strong></div>
+            <div>🌡️ Maximum: <strong>${forecast.max_temperature_celsius} °C</strong></div>
+            <div>🌡️ Minimum: <strong>${forecast.min_temperature_celsius} °C</strong></div>
+            <div>🌤️ Condition: <strong>${forecast.weather_description}</strong></div>
+            <div>🌧️ Precipitation: <strong>${forecast.precipitation_mm} mm</strong></div>
         </div>
-
     `;
 
-    message.appendChild(
-        bubble
-    );
+    message.appendChild(bubble);
+    chat.appendChild(message);
+    chat.scrollTop = chat.scrollHeight;
+}
 
-    chat.appendChild(
-        message
-    );
 
-    chat.scrollTop =
-        chat.scrollHeight;
+/* =====================================================
+   LOAD ALERTS
+===================================================== */
 
+async function loadAlerts(city) {
+    const card = document.getElementById("alertCard");
+    const badge = document.getElementById("alertBadge");
+    const title = document.getElementById("alertTitle");
+    const message = document.getElementById("alertMessage");
+    const recsList = document.getElementById("alertRecommendations");
+
+    try {
+        const res = await fetch(API_URL + "/alerts/" + encodeURIComponent(city.trim()));
+        if (!res.ok) throw new Error("Alerts API error: " + res.status);
+
+        const data = await res.json();
+        recsList.innerHTML = "";
+
+        if (data.has_alert && data.alerts && data.alerts.length > 0) {
+            const firstAlert = data.alerts[0];
+            const sev = (data.risk_level || "medium").toLowerCase();
+
+            card.className = "alert-card " + sev;
+            badge.className = "alert-badge " + sev;
+            badge.textContent = data.risk_level + " RISK (" + data.risk_score + "/100)";
+            title.textContent = "⚡ " + firstAlert.title;
+            message.textContent = firstAlert.message;
+
+            if (firstAlert.recommendations && firstAlert.recommendations.length > 0) {
+                recsList.style.display = "block";
+                firstAlert.recommendations.forEach(rec => {
+                    const li = document.createElement("li");
+                    li.textContent = rec;
+                    recsList.appendChild(li);
+                });
+            } else {
+                recsList.style.display = "none";
+            }
+        } else {
+            const t = I18N[currentLanguage] || I18N.en;
+            card.className = "alert-card low";
+            badge.className = "alert-badge low";
+            badge.textContent = "ALL CLEAR";
+            title.textContent = "⚡ Weather Status";
+            message.textContent = t.allClear;
+            recsList.style.display = "none";
+        }
+    } catch (e) {
+        console.warn("Could not load alerts:", e);
+        card.className = "alert-card low";
+        badge.className = "alert-badge low";
+        badge.textContent = "NORMAL";
+        title.textContent = "⚡ Weather Advisory";
+        message.textContent = "Weather conditions monitored.";
+        recsList.style.display = "none";
+    }
 }
 
 
@@ -756,326 +1027,98 @@ function addForecastCard(forecast) {
 ===================================================== */
 
 async function loadWeather(city) {
-
     try {
-
-        if(
-            !city ||
-            city.trim()==="" ||
-            city.toLowerCase()==="undefined"
-        ) {
-
-            throw new Error(
-                "Invalid city"
-            );
-
+        if (!city || city.trim() === "" || city.toLowerCase() === "undefined") {
+            throw new Error("Invalid city");
         }
 
+        document.getElementById("weatherDescription").textContent = "Loading weather...";
+        document.getElementById("currentTemperature").textContent = "--";
 
-        document.getElementById(
-            "weatherDescription"
-        ).textContent =
-            "Loading weather...";
+        const response = await fetch(API_URL + "/weather/" + encodeURIComponent(city.trim()));
+        if (!response.ok) throw new Error("Weather API error: " + response.status);
 
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
 
-        document.getElementById(
-            "currentTemperature"
-        ).textContent =
-            "--";
+        document.getElementById("weatherCity").textContent = data.city + ", " + (data.country || "India");
+        document.getElementById("currentTemperature").textContent = data.temperature_celsius;
+        document.getElementById("humidity").textContent = data.humidity_percent + "%";
+        document.getElementById("wind").textContent = data.wind_speed_kmh + " km/h";
+        document.getElementById("rain").textContent = data.precipitation_mm + " mm";
+        document.getElementById("weatherDescription").textContent = data.weather_description;
+        document.getElementById("cityInput").value = data.city;
 
-
-        const response =
-            await fetch(
-
-                API_URL +
-                "/weather/" +
-                encodeURIComponent(
-                    city.trim()
-                )
-
-            );
-
-
-        if(!response.ok) {
-
-            throw new Error(
-                "Weather API error: " +
-                response.status
-            );
-
-        }
-
-
-        const data =
-            await response.json();
-
-
-        if(data.error) {
-
-            throw new Error(
-                data.error
-            );
-
-        }
-
-
-        /* =================================================
-           FIXED BACKEND FIELD NAMES
-           
-           Backend returns:
-           
-           city
-           temperature_celsius
-           humidity_percent
-           wind_speed_kmh
-           weather_description
-           precipitation_mm
-           ================================================= */
-
-
-        document.getElementById(
-            "weatherCity"
-        ).textContent =
-            data.city +
-            ", India";
-
-
-        document.getElementById(
-            "currentTemperature"
-        ).textContent =
-            data.temperature_celsius;
-
-
-        document.getElementById(
-            "humidity"
-        ).textContent =
-            data.humidity_percent +
-            "%";
-
-
-        document.getElementById(
-            "wind"
-        ).textContent =
-            data.wind_speed_kmh +
-            " km/h";
-
-
-        document.getElementById(
-            "rain"
-        ).textContent =
-            data.precipitation_mm +
-            " mm";
-
-
-        document.getElementById(
-            "weatherDescription"
-        ).textContent =
-            data.weather_description;
-
-
-        document.getElementById(
-            "cityInput"
-        ).value =
-            data.city;
-
+        // Automatically refresh alerts for the active city
+        loadAlerts(data.city);
+    } catch (error) {
+        document.getElementById("weatherDescription").textContent = "Unable to load weather";
+        document.getElementById("currentTemperature").textContent = "--";
+        document.getElementById("humidity").textContent = "--";
+        document.getElementById("wind").textContent = "--";
+        document.getElementById("rain").textContent = "--";
+        console.error(error);
     }
-
-
-    catch(error) {
-
-        document.getElementById(
-            "weatherDescription"
-        ).textContent =
-            "Unable to load weather";
-
-
-        document.getElementById(
-            "currentTemperature"
-        ).textContent =
-            "--";
-
-
-        document.getElementById(
-            "humidity"
-        ).textContent =
-            "--";
-
-
-        document.getElementById(
-            "wind"
-        ).textContent =
-            "--";
-
-
-        document.getElementById(
-            "rain"
-        ).textContent =
-            "--";
-
-
-        console.error(
-            error
-        );
-
-    }
-
 }
 
 
 /* =====================================================
-   SEARCH CITY
+   SEARCH & REFRESH CITY
 ===================================================== */
 
 function searchCity() {
-
-    const city =
-        document
-        .getElementById(
-            "cityInput"
-        )
-        .value
-        .trim();
-
-
-    if(
-        !city ||
-        city.toLowerCase()==="undefined"
-    ) {
-
-        return;
-
-    }
-
-
-    loadWeather(
-        city
-    );
-
+    const city = document.getElementById("cityInput").value.trim();
+    if (!city || city.toLowerCase() === "undefined") return;
+    loadWeather(city);
 }
-
-
-/* =====================================================
-   REFRESH WEATHER
-===================================================== */
 
 function refreshWeather() {
-
-    const city =
-        document
-        .getElementById(
-            "cityInput"
-        )
-        .value
-        .trim();
-
-
-    if(
-        !city ||
-        city.toLowerCase()==="undefined"
-    ) {
-
-        return;
-
-    }
-
-
-    loadWeather(
-        city
-    );
-
+    const city = document.getElementById("cityInput").value.trim();
+    if (!city || city.toLowerCase() === "undefined") return;
+    loadWeather(city);
 }
-
-
-/* =====================================================
-   GET CURRENT CITY
-===================================================== */
 
 function getCurrentCity() {
-
-    const city =
-        document
-        .getElementById(
-            "cityInput"
-        )
-        .value
-        .trim();
-
-
-    if(
-        !city ||
-        city.toLowerCase()==="undefined"
-    ) {
-
-        return "Kurnool";
-
-    }
-
-
+    const city = document.getElementById("cityInput").value.trim();
+    if (!city || city.toLowerCase() === "undefined") return "Kurnool";
     return city;
-
 }
 
 
 /* =====================================================
-   CURRENT WEATHER QUICK BUTTON
+   QUICK ACTION BUTTONS
 ===================================================== */
 
 function askCurrentWeather() {
-
-    const city =
-        getCurrentCity();
-
-
-    quickMessage(
-
-        "What is the weather in " +
-        city +
-        "?"
-
-    );
-
+    const city = getCurrentCity();
+    const q = currentLanguage === "te"
+        ? `${city} లో ప్రస్తుత వాతావరణం ఏమిటి?`
+        : `What is the weather in ${city}?`;
+    quickMessage(q);
 }
-
-
-/* =====================================================
-   TOMORROW QUICK BUTTON
-===================================================== */
 
 function askTomorrow() {
-
-    const city =
-        getCurrentCity();
-
-
-    quickMessage(
-
-        "What will the weather be tomorrow in " +
-        city +
-        "?"
-
-    );
-
+    const city = getCurrentCity();
+    const q = currentLanguage === "te"
+        ? `${city} లో రేపటి వాతావరణం ఎలా ఉంటుంది?`
+        : `What will the weather be tomorrow in ${city}?`;
+    quickMessage(q);
 }
 
-
-/* =====================================================
-   NEXT HOUR QUICK BUTTON
-===================================================== */
-
 function askNextHour() {
+    const city = getCurrentCity();
+    const q = currentLanguage === "te"
+        ? `${city} లో తరువాతి గంట ఉష్ణోగ్రత ఎంత ఉంటుంది?`
+        : `What will the temperature be next hour in ${city}?`;
+    quickMessage(q);
+}
 
-    const city =
-        getCurrentCity();
-
-
-    quickMessage(
-
-        "What will the temperature be next hour in " +
-        city +
-        "?"
-
-    );
-
+function askRisk() {
+    const city = getCurrentCity();
+    const q = currentLanguage === "te"
+        ? `${city} లో వాతావరణ ప్రమాద అంచనా మరియు వ్యవసాయ సలహాలు ఏమిటి?`
+        : `What is the weather risk and agricultural advisory for ${city}?`;
+    quickMessage(q);
 }
 
 
@@ -1084,326 +1127,88 @@ function askNextHour() {
 ===================================================== */
 
 async function sendMessage() {
+    const message = input.value.trim();
+    if (!message) return;
 
-    const message =
-        input.value.trim();
+    addMessage(message, "user");
+    input.value = "";
+    sendButton.disabled = true;
 
-
-    if(!message) {
-
-        return;
-
-    }
-
-
-    addMessage(
-        message,
-        "user"
-    );
-
-
-    input.value =
-        "";
-
-
-    sendButton.disabled =
-        true;
-
-
-    const typing =
-        document.createElement(
-            "div"
-        );
-
-
-    typing.className =
-        "typing";
-
-
-    typing.textContent =
-        "WeatherGPT is thinking...";
-
-
-    chat.appendChild(
-        typing
-    );
-
-
-    chat.scrollTop =
-        chat.scrollHeight;
-
+    const t = I18N[currentLanguage] || I18N.en;
+    const typing = document.createElement("div");
+    typing.className = "typing";
+    typing.textContent = t.thinking;
+    chat.appendChild(typing);
+    chat.scrollTop = chat.scrollHeight;
 
     try {
+        const response = await fetch(API_URL + "/chat", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                message: message,
+                language: currentLanguage
+            })
+        });
 
-        const response =
-            await fetch(
+        if (!response.ok) throw new Error("API error: " + response.status);
 
-                API_URL +
-                "/chat",
-
-                {
-
-                    method:
-                        "POST",
-
-                    headers: {
-
-                        "Content-Type":
-                            "application/json"
-
-                    },
-
-                    body:
-                        JSON.stringify({
-
-                            message:
-                                message
-
-                        })
-
-                }
-
-            );
-
-
-        if(!response.ok) {
-
-            throw new Error(
-                "API error: " +
-                response.status
-            );
-
-        }
-
-
-        const data =
-            await response.json();
-
-
+        const data = await response.json();
         typing.remove();
 
-
-        /* =================================================
-           CURRENT WEATHER
-        ================================================= */
-
-        if(
-            data.type ===
-            "city_weather"
-        ) {
-
-            if(
-                data.weather
-            ) {
-
-                addWeatherCard(
-                    data.weather
-                );
-
-            }
-
-
-            if(
-                data.answer
-            ) {
-
-                addMessage(
-                    data.answer,
-                    "bot"
-                );
-
-            }
-
+        // Render appropriate structured card if present
+        if (data.type === "city_weather" && data.weather) {
+            addWeatherCard(data.weather);
+        } else if (data.type === "tomorrow_forecast" && data.forecast) {
+            addForecastCard(data.forecast);
         }
 
+        // Render natural language response
+        const answerText = data.answer || data.response || "No response received.";
+        addMessage(answerText, "bot");
 
-        /* =================================================
-           TOMORROW FORECAST
-        ================================================= */
+        // Speak aloud via TTS if enabled
+        speakText(answerText);
 
-        else if(
-            data.type ===
-            "tomorrow_forecast"
-        ) {
-
-            if(
-                data.forecast
-            ) {
-
-                addForecastCard(
-                    data.forecast
-                );
-
-            }
-
-
-            if(
-                data.answer
-            ) {
-
-                addMessage(
-                    data.answer,
-                    "bot"
-                );
-
-            }
-
-        }
-
-
-        /* =================================================
-           GRU PREDICTION
-        ================================================= */
-
-        else if(
-            data.type ===
-            "gru_prediction"
-        ) {
-
-            let text =
-                "";
-
-
-            if(
-                data.predicted_temperature_celsius
-                !== undefined
-            ) {
-
-                text =
-                    "📈 Next-hour temperature prediction: " +
-                    data.predicted_temperature_celsius +
-                    " °C\n\n";
-
-            }
-
-
-            text +=
-                data.answer ||
-                "GRU prediction completed.";
-
-
-            addMessage(
-                text,
-                "bot"
-            );
-
-        }
-
-
-        /* =================================================
-           GENERAL / RAG RESPONSE
-        ================================================= */
-
-        else {
-
-            addMessage(
-
-                data.answer ||
-                data.response ||
-                "No response received.",
-
-                "bot"
-
-            );
-
-        }
-
-    }
-
-
-    catch(error) {
-
+    } catch (error) {
         typing.remove();
-
-
         addMessage(
-
-            "❌ Error connecting to WeatherGPT API.\n\n" +
-            "Please check the Railway backend logs.",
-
+            "❌ Error connecting to WeatherGPT+ API.\nPlease ensure backend server is running.",
             "bot"
-
         );
-
-
-        console.error(
-            error
-        );
-
-    }
-
-
-    finally {
-
-        sendButton.disabled =
-            false;
-
+        console.error(error);
+    } finally {
+        sendButton.disabled = false;
         input.focus();
-
     }
-
 }
 
 
 /* =====================================================
-   QUICK MESSAGE
+   EVENT LISTENERS
 ===================================================== */
 
 function quickMessage(message) {
-
-    input.value =
-        message;
-
+    input.value = message;
     sendMessage();
-
 }
 
-
-/* =====================================================
-   ENTER KEY
-===================================================== */
-
-input.addEventListener(
-
-    "keydown",
-
-    function(event) {
-
-        if(
-            event.key ===
-            "Enter"
-        ) {
-
-            sendMessage();
-
-        }
-
+input.addEventListener("keydown", function(event) {
+    if (event.key === "Enter") {
+        sendMessage();
     }
+});
 
-);
-
-
-/* =====================================================
-   LOAD DEFAULT CITY
-===================================================== */
-
-window.addEventListener(
-
-    "load",
-
-    function() {
-
-        loadWeather(
-            "Kurnool"
-        );
-
-    }
-
-);
+window.addEventListener("load", function() {
+    changeLanguage(currentLanguage);
+    ttsToggle.textContent = ttsEnabled ? "🔊" : "🔇";
+    loadWeather("Kurnool");
+});
 
 </script>
 
 </body>
 
 </html>
-

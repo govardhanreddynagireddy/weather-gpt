@@ -52,6 +52,8 @@ from pydantic import BaseModel
 
 from backend.agent.orchestrator import orchestrate
 from backend.tools.weather_tool import get_weather
+from backend.routes.alerts import router as alerts_router
+from backend.routes.feedback import router as feedback_router
 
 
 # =====================================================
@@ -90,12 +92,21 @@ app.add_middleware(
 
 
 # =====================================================
+# MOUNT ROUTERS
+# =====================================================
+
+app.include_router(alerts_router)
+app.include_router(feedback_router)
+
+
+# =====================================================
 # REQUEST MODEL
 # =====================================================
 
 class ChatRequest(BaseModel):
 
     message:str
+    language:str = "en"
 
 
 # =====================================================
@@ -178,7 +189,8 @@ def chat(request:ChatRequest):
 
         result=orchestrate(
 
-            request.message
+            request.message,
+            language=request.language
         )
 
         return result
@@ -199,6 +211,8 @@ def chat(request:ChatRequest):
 
                 "message":request.message,
 
+                "language":request.language,
+
                 "error":str(e),
 
                 "answer":f"⚠️ Server error processing request: {str(e)}"
@@ -206,3 +220,9 @@ def chat(request:ChatRequest):
             }
 
         )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=port, reload=False)

@@ -1,12 +1,19 @@
-def calculate_risk(weather,historical):
+def calculate_risk(weather,historical=None):
 
     score=0
     reasons=[]
 
-    temperature=weather["temperature"]
-    rainfall=weather["rainfall"]
-    wind_speed=weather["wind_speed"]
-    humidity=weather["humidity"]
+    if not weather:
+        return {
+            "risk_score": 0,
+            "risk_level": "LOW",
+            "reasons": ["No weather data available"]
+        }
+
+    temperature=weather.get("temperature_celsius", weather.get("temperature", 0.0))
+    rainfall=weather.get("precipitation_mm", weather.get("rainfall", 0.0))
+    wind_speed=weather.get("wind_speed_kmh", weather.get("wind_speed", 0.0))
+    humidity=weather.get("humidity_percent", weather.get("humidity", 0.0))
 
     # Temperature risk
     if temperature>=40:
@@ -44,7 +51,7 @@ def calculate_risk(weather,historical):
         reasons.append("Very high humidity")
 
     # Historical anomaly
-    if historical["available"]:
+    if historical and historical.get("available") and "comparison" in historical:
 
         comparison=historical["comparison"]
 

@@ -31,15 +31,21 @@ def get_weather(city):
         "units":"metric"
     }
 
-    response=requests.get(
-        url,
-        params=params,
-        timeout=10
-    )
-
-    response.raise_for_status()
-
-    data=response.json()
+    last_err = None
+    for attempt in range(2):
+        try:
+            response=requests.get(
+                url,
+                params=params,
+                timeout=15
+            )
+            response.raise_for_status()
+            data=response.json()
+            break
+        except Exception as e:
+            last_err = e
+            if attempt == 1:
+                raise last_err
 
     rain_data = data.get("rain") or {}
     precipitation = 0.0
@@ -85,15 +91,21 @@ def get_weather_forecast(city,days_ahead=1):
         "units":"metric"
     }
 
-    response=requests.get(
-        url,
-        params=params,
-        timeout=10
-    )
-
-    response.raise_for_status()
-
-    data=response.json()
+    last_err = None
+    for attempt in range(2):
+        try:
+            response=requests.get(
+                url,
+                params=params,
+                timeout=15
+            )
+            response.raise_for_status()
+            data=response.json()
+            break
+        except Exception as e:
+            last_err = e
+            if attempt == 1:
+                raise last_err
 
     target_date=(
         datetime.now()+timedelta(days=days_ahead)

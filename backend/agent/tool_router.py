@@ -26,7 +26,12 @@ def route_tool(message):
         "imd warning",
         "weather alert",
         "cyclone alert",
-        "storm warning"
+        "storm warning",
+        "హెచ్చరిక",
+        "బులెటిన్",
+        "వర్షపాతం",
+        "తుఫాను",
+        "అలర్ట్"
     ]
 
 
@@ -44,7 +49,11 @@ def route_tool(message):
         "gru",
         "model prediction",
         "future temperature",
-        "predicted temperature"
+        "predicted temperature",
+        "తరువాతి గంట",
+        "తదుపరి గంట",
+        "ఉష్ణోగ్రత అంచనా",
+        "మోడల్ అంచనా"
     ]
 
 
@@ -60,7 +69,10 @@ def route_tool(message):
         "past weather",
         "historical weather",
         "past temperature",
-        "historical temperature"
+        "historical temperature",
+        "చరిత్ర",
+        "గత సంవత్సరం",
+        "గత వాతావరణం"
     ]
 
 
@@ -77,7 +89,16 @@ def route_tool(message):
         "flood risk",
         "heat risk",
         "rain risk",
-        "weather risk"
+        "weather risk",
+        "farmer",
+        "farmers",
+        "ప్రమాదం",
+        "రిస్క్",
+        "ప్రభావం",
+        "రైతు",
+        "రైతులు",
+        "వరద",
+        "వేడి"
     ]
 
 
@@ -117,6 +138,7 @@ def route_tool(message):
             or "current conditions" in message
             or ("weather in" in message and has_gru)
             or ("current temperature" in message and has_gru)
+            or ("వాతావరణం" in message and has_gru)
         )
     )
 
@@ -128,6 +150,7 @@ def route_tool(message):
             or "weather with" in message
             or "weather in" in message
             or "today's weather" in message
+            or ("వాతావరణం" in message and has_rag)
         )
     )
 

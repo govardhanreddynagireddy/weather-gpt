@@ -1,14 +1,22 @@
 def generate_advisory(weather,risk):
 
-    risk_level=risk["risk_level"]
-    reasons=risk["reasons"]
+    risk_level=risk.get("risk_level", "LOW") if isinstance(risk, dict) else "LOW"
+    reasons=risk.get("reasons", []) if isinstance(risk, dict) else []
 
     impacts=[]
     recommendations=[]
 
-    temperature=weather["temperature"]
-    rainfall=weather["rainfall"]
-    wind_speed=weather["wind_speed"]
+    if not weather:
+        return {
+            "risk_level": risk_level,
+            "possible_impacts": ["No weather data available."],
+            "recommendations": ["Check current weather update."],
+            "reasons": reasons
+        }
+
+    temperature=weather.get("temperature_celsius", weather.get("temperature", 0.0))
+    rainfall=weather.get("precipitation_mm", weather.get("rainfall", 0.0))
+    wind_speed=weather.get("wind_speed_kmh", weather.get("wind_speed", 0.0))
 
     # Temperature
     if temperature>=40:
