@@ -667,6 +667,8 @@ Ask me anything about the weather:
    CONFIGURABLE BACKEND API URL
 ===================================================== */
 
+const PRODUCTION_API_URL = "https://weather-gpt-production-4837.up.railway.app";
+
 function getApiBaseUrl() {
     if (window.WEATHERGPT_API_URL) {
         return window.WEATHERGPT_API_URL;
@@ -682,10 +684,11 @@ function getApiBaseUrl() {
     ) {
         return "http://127.0.0.1:8000";
     }
-    return window.location.origin;
+    return PRODUCTION_API_URL;
 }
 
-const API_URL = getApiBaseUrl();
+const API_BASE = getApiBaseUrl();
+const API_URL = API_BASE;
 
 
 /* =====================================================
