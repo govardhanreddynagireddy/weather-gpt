@@ -101,6 +101,7 @@ ALLOWED_ORIGINS = [
     "http://localhost:8000",
     "http://localhost:3000",
     "https://weather-gpt-production-4837.up.railway.app",
+    "https://weather-gpt-eight-wine.vercel.app",
     "null"
 ]
 
@@ -111,7 +112,7 @@ if extra_origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"^https://.*\.railway\.app$",
+    allow_origin_regex=r"^https://.*(\.railway\.app|\.vercel\.app)$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
