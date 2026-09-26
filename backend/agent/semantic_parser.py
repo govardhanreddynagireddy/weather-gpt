@@ -79,7 +79,9 @@ NON_CITY_WORDS = {
     "fields", "can", "could", "should", "would", "any", "rainy", "sunny",
     "cloudy", "hot", "cold", "warm", "tell", "say", "suggest",
     "hi", "hello", "hey", "thanks", "thank", "you", "ok", "okay", "bye", "goodbye",
-    "namaste", "morning", "evening", "afternoon", "fine", "cool", "sure", "well"
+    "namaste", "morning", "evening", "afternoon", "fine", "cool", "sure", "well",
+    "tommorow", "tommorrow", "tomorow", "tommrow", "repatiki", "రేపటి",
+    "outside", "out", "doot", "drying", "harvest", "harvesting"
 }
 
 
@@ -153,12 +155,11 @@ def parse_semantic_intent(
         # Pure conversational messages NEVER inherit tomorrow or weather forecast
         time_intent = "current"
         days_ahead = 0
-    elif user_intent == INTENT_LOCATION_CHANGE:
-        # Location change (e.g. "What about Hyderabad?") queries current weather for new city
-        time_intent = "current"
-        days_ahead = 0
     else:
-        tomorrow_indicators = ["tomorrow", "repu", "రేపు", "next day", "repatiki", "రేపటి"]
+        tomorrow_indicators = [
+            "tomorrow", "tommorow", "tommorrow", "tomorow", "tommrow",
+            "repu", "రేపు", "next day", "repatiki", "రేపటి", "repu weather ela untadhi"
+        ]
         next_hour_indicators = ["next hour", "next-hour", "తరువాతి గంట", "తదుపరి గంట", "next 1 hour"]
         today_indicators = ["today", "now", "current", "ఈరోజు", "ఇప్పుడు", "ప్రస్తుతం"]
 
@@ -171,13 +172,18 @@ def parse_semantic_intent(
         elif has_explicit_tomorrow:
             time_intent = "tomorrow"
             days_ahead = 1
+        elif user_intent == INTENT_LOCATION_CHANGE:
+            # Location change without tomorrow (e.g. "What about Hyderabad?") queries current weather for new city
+            time_intent = "current"
+            days_ahead = 0
         elif not has_explicit_today and conversation_history:
             # Check if this is an actual weather follow-up query inheriting time horizon
             follow_up_tokens = [
                 "rain", "rain?", "varsham", "వర్షం", "safe", "farming", "crop", "crops",
-                "spray", "spraying", "wind", "temp", "temperature", "forecast", "danger"
+                "spray", "spraying", "pesticide", "wind", "temp", "temperature", "forecast", "danger",
+                "outside", "out", "doot", "travel", "driving", "dry", "drying", "harvest", "harvesting"
             ]
-            is_weather_followup = any(tok in msg_lower for tok in follow_up_tokens)
+            is_weather_followup = any(tok in msg_lower for tok in follow_up_tokens) or (matched_activity is not None)
             if is_weather_followup:
                 for turn in reversed(conversation_history[-4:]):
                     if turn.get("role") == "user":

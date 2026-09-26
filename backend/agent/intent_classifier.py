@@ -37,25 +37,25 @@ CONVERSATIONAL_INTENTS = {
 GREETING_REGEX = re.compile(
     r"^(\s*(hi|hello|hey|heyy|heya|howdy|yo|sup|namaste|namaskar|namaskaram|greetings|hola)\b[!?. ]*|"
     r"\s*(good\s+(morning|afternoon|evening|day))\b[!?. ]*|"
-    r"\s*(హలో|హాయ్|నమస్కారం|నమస్తే|బాగున్నారా|నమస్కారాలు)\b[!?. ]*)$",
+    r"\s*(హలో|హాయ్|నమస్కారం|నమస్తే|బాగున్నారా|నమస్కారాలు)[!?. ]*)$",
     re.IGNORECASE
 )
 
 GOODBYE_REGEX = re.compile(
     r"^(\s*(bye|goodbye|see\s+ya|see\s+you|cya|take\s+care|farewell|good\s*night)\b[!?. ]*|"
-    r"\s*(టాటా|బై|వెళ్లొస్తా|వెళ్లొస్తాను|మళ్ళీ\s+కలుద్దాం)\b[!?. ]*)$",
+    r"\s*(టాటా|బై|వెళ్లొస్తా|వెళ్లొస్తాను|మళ్ళీ\s+కలుద్దాం)[!?. ]*)$",
     re.IGNORECASE
 )
 
 THANKS_REGEX = re.compile(
     r"^(\s*(thanks|thank\s+you|thankyou|thx|many\s+thanks|appreciate\s+it|cheers)\b[!?. ]*|"
-    r"\s*(ధన్యవాదాలు|థాంక్స్|చాలా\s+ధన్యవాదాలు|ధన్యవాదములు|thanks\s+a\s+lot)\b[!?. ]*)$",
+    r"\s*(ధన్యవాదాలు|థాంక్స్|చాలా\s+ధన్యవాదాలు|ధన్యవాదములు|thanks\s+a\s+lot)[!?. ]*)$",
     re.IGNORECASE
 )
 
 ACKNOWLEDGEMENT_REGEX = re.compile(
     r"^(\s*(ok|okay|got\s+it|fine|cool|understood|all\s+right|alright|great|nice|sure|k|sounds\s+good)\b[!?. ]*|"
-    r"\s*(సరే|అర్థమైంది|మంచిది|ఓకే|సరేనండి)\b[!?. ]*)$",
+    r"\s*(సరే|అర్థమైంది|మంచిది|ఓకే|సరేనండి)[!?. ]*)$",
     re.IGNORECASE
 )
 
@@ -69,11 +69,11 @@ WEATHER_KEYWORDS = [
 
 
 def normalize_text(text: str) -> str:
-    """Normalizes accents, diacritics, and lowercases text."""
+    """Normalizes accents on Latin characters without stripping Indic vowel signs."""
     if not text:
         return ""
     norm = unicodedata.normalize('NFKD', str(text))
-    cleaned = ''.join(c for c in norm if not unicodedata.combining(c))
+    cleaned = ''.join(c for c in norm if not (unicodedata.combining(c) and ord(c) < 0x0900))
     return cleaned.strip()
 
 
@@ -131,7 +131,8 @@ def classify_user_intent(message: str, conversation_history: Optional[List[Dict[
     location_change_indicators = ["what about ", "how about ", "and in ", "what is in ", "weather in "]
     from backend.agent.semantic_parser import KNOWN_CITIES
     has_city_mention = any(c.lower() in msg_lower for c in KNOWN_CITIES)
-    if has_city_mention and any(ind in msg_lower for ind in ["what about ", "how about ", "and in "]):
+    has_explicit_tomorrow = any(tok in msg_lower for tok in ["tomorrow", "tommorow", "tommorrow", "tomorow", "repu", "రేపు"])
+    if not has_explicit_tomorrow and has_city_mention and any(ind in msg_lower for ind in ["what about ", "how about ", "and in "]):
         return INTENT_LOCATION_CHANGE
 
     # 5. FARMING & AGRICULTURAL ADVISORY
@@ -145,9 +146,10 @@ def classify_user_intent(message: str, conversation_history: Optional[List[Dict[
 
     # 6. WEATHER FORECAST / TOMORROW
     forecast_tokens = [
-        "tomorrow", "repu", "next day", "repatiki", "forecast", "future weather",
+        "tomorrow", "tommorow", "tommorrow", "tomorow", "tommrow", "repu", "next day", "repatiki", "forecast", "future weather",
         "tomorrow's weather", "what about tomorrow", "weather tomorrow", "రేపు",
-        "రేపటి వాతావరణం", "రేపటి అంచనా", "repu ela"
+        "రేపటి వాతావరణం", "రేపటి అంచనా", "repu ela", "repu weather ela untadhi", "repu weather",
+        "రేపు వాతావరణం ఎలా ఉంటుంది", "వాతావరణం ఎలా ఉంటుంది"
     ]
     if any(tok in msg_lower for tok in forecast_tokens):
         return INTENT_WEATHER_FORECAST
@@ -180,7 +182,8 @@ def classify_user_intent(message: str, conversation_history: Optional[List[Dict[
     current_tokens = [
         "current weather", "weather now", "how is the weather", "what is the weather",
         "temperature today", "today's weather", "climate", "temperature", "వాతావరణం",
-        "ఉష్ణోగ్రత", "వాతావరణం ఎలా ఉంది", "weather today", "weather here"
+        "ఉష్ణోగ్రత", "వాతావరణం ఎలా ఉంది", "weather today", "weather here",
+        "weather ela undhi", "weather ela untadhi", "weather ela untundhi", "ela undhi", "ela untadhi"
     ]
     if any(tok in msg_lower for tok in current_tokens) or has_city_mention:
         return INTENT_WEATHER_CURRENT
@@ -202,8 +205,8 @@ def get_conversational_response(intent: str, language: str = "en") -> str:
     """Returns standard friendly conversational responses without running weather APIs."""
     if intent == INTENT_GREETING:
         if language == "te":
-            return "నమస్కారం! 👋 మీకు వాతావరణ సమాచారంలో ఎలా సహాయపడగలను?"
-        return "Hello! 👋 How can I help you with the weather?"
+            return "నమస్కారం! 👋 నేను WeatherGPT+. నేను వాతావరణ అంచనాలు, వర్షం, ప్రయాణం, వ్యవసాయం, అవుట్‌డోర్ కార్యకలాపాలు, వాతావరణ ప్రమాదాలు, హెచ్చరికలు మొదలైన వాటిలో సహాయపడగలను. మీరు ఏమి తెలుసుకోవాలనుకుంటున్నారు?"
+        return "Hello! 👋 I’m WeatherGPT+. I can help with forecasts, rain, travel, farming, outdoor activities, weather risks, alerts, and more. What would you like to know?"
 
     if intent == INTENT_GOODBYE:
         if language == "te":

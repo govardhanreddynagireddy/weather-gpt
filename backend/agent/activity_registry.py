@@ -42,7 +42,8 @@ ACTIVITY_REGISTRY: Dict[str, Dict[str, Any]] = {
         "aliases_en": [
             r"\bdry\b.*\bcrop\b", r"\bcrop\b.*\bdry\b", r"\bdry\b.*\bgrain\b",
             r"\bgrain\b.*\bdry\b", r"\bdrying\b", r"\bsun\b.*\bdry\b",
-            r"\bchilli\b.*\bdry\b", r"\bpaddy\b.*\bdry\b"
+            r"\bchilli\b.*\bdry\b", r"\bpaddy\b.*\bdry\b",
+            r"\bdry\b.*\bharvest", r"\bharvested\s+crop"
         ],
         "aliases_te": [
             "ఆరబెట్ట", "ఎండబెట్ట", "ధాన్యం ఆర", "పంట ఆర", "మిరప ఆర",
@@ -289,6 +290,28 @@ ACTIVITY_REGISTRY: Dict[str, Dict[str, Any]] = {
         },
         "default_favorable_advice": "Gentle winds suitable for drone flights, light sailing, and rooftop work.",
         "default_unfavorable_advice": "Strong winds may destabilize drones, small boats, or elevated equipment."
+    },
+    "outdoor_general": {
+        "key": "outdoor_general",
+        "domain": "outdoor_activities",
+        "name": "Outdoor Activities & Going Outside",
+        "decision_context": "outdoor_weather_safety",
+        "aliases_en": [
+            r"\bgo outside\b", r"\bgoing outside\b", r"\bstep outside\b",
+            r"\bgo out\b", r"\bgoing out\b", r"\bgo doot\b", r"\bgoing doot\b",
+            r"\bcan i go out\b", r"\bcan i go outside\b", r"\boutdoor\b", r"\boutdoors\b"
+        ],
+        "aliases_te": [
+            "బయటకు వెళ్ల", "బయటకు వెళ్లవచ్చా", "బయటికి వెళ్లొచ్చా", "బయటకు", "బయటికి", "bayatiki", "bayataki"
+        ],
+        "required_variables": ["precipitation", "temperature", "wind_speed", "weather_condition"],
+        "thresholds": {
+            "max_rain_mm": 0.5,
+            "max_wind_kmh": 28.0,
+            "max_temp_c": 39.0
+        },
+        "default_favorable_advice": "Weather conditions are pleasant and safe for going outside.",
+        "default_unfavorable_advice": "Consider staying indoors or taking precautions due to unfavorable weather conditions."
     }
 }
 

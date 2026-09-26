@@ -1538,21 +1538,46 @@
         const PRODUCTION_API_URL = "https://weather-gpt-production-4837.up.railway.app";
 
         function getApiBaseUrl() {
-            if (window.WEATHERGPT_API_URL) return window.WEATHERGPT_API_URL;
-            const stored = localStorage.getItem("weathergpt_api_url");
-            if (stored) return stored;
-            if (
-                window.location.hostname === "localhost" ||
-                window.location.hostname === "127.0.0.1" ||
-                window.location.protocol === "file:"
-            ) {
-                return "http://127.0.0.1:8000";
+            let base = "";
+
+            // 1. Explicit window override
+            if (typeof window !== "undefined" && window.WEATHERGPT_API_URL && typeof window.WEATHERGPT_API_URL === "string") {
+                base = window.WEATHERGPT_API_URL.trim();
             }
-            return window.location.origin || PRODUCTION_API_URL;
+            // 2. localStorage override
+            else if (typeof localStorage !== "undefined" && localStorage.getItem("weathergpt_api_url")) {
+                base = localStorage.getItem("weathergpt_api_url").trim();
+            }
+            // 3. Local development checks
+            else if (
+                typeof window !== "undefined" &&
+                (window.location.hostname === "localhost" ||
+                 window.location.hostname === "127.0.0.1" ||
+                 window.location.protocol === "file:")
+            ) {
+                // If served on backend port 8000 itself, use origin, otherwise point to local backend on 8000
+                if (window.location.port === "8000") {
+                    base = window.location.origin;
+                } else {
+                    base = "http://127.0.0.1:8000";
+                }
+            }
+            // 4. Production on Railway
+            else if (typeof window !== "undefined" && window.location.hostname.includes("railway.app")) {
+                base = window.location.origin;
+            }
+            // 5. Default fallback to Railway Production URL
+            else {
+                base = PRODUCTION_API_URL;
+            }
+
+            // Normalize trailing slashes
+            return base.replace(/\/+$/, "");
         }
 
         const API_BASE = getApiBaseUrl();
         const API_URL = API_BASE;
+        console.info("[WeatherGPT+] API_BASE:", API_BASE);
 
         /* =====================================================
            APPLICATION STATE
@@ -2767,24 +2792,58 @@
         }
 
         /* =====================================================
-           PILL ACTIONS
+           PILL ACTIONS & MAP SYNCHRONIZATION
         ===================================================== */
+        async function syncCityToMap(cityName) {
+            if (!cityName || !cityName.trim()) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/location/search?q=${encodeURIComponent(cityName.trim())}&limit=1`);
+                if (res.ok) {
+                    const json = await res.json();
+                    if (json.results && json.results.length > 0) {
+                        const loc = json.results[0];
+                        await selectLocation(loc.lat, loc.lon, loc.name);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn("syncCityToMap lookup error:", e);
+            }
+            if (cityName) {
+                state.city = cityName;
+                const badge = document.getElementById("dispCity");
+                if (badge) badge.textContent = cityName;
+            }
+        }
+
         function handlePillAction(pill) {
-            if (pill.action === "focus_map") {
-                const forecastTab = document.querySelector('[data-tab="forecast"]');
-                if (forecastTab) forecastTab.click();
-                if (map) {
+            if (!pill || typeof pill !== "object") return;
+            const action = pill.action;
+
+            if (action === "focus_map") {
+                const activeChat = getActiveChat();
+                const targetCity = pill.city || activeChat.city || state.city;
+                if (targetCity && targetCity.toLowerCase() !== state.city.toLowerCase()) {
+                    syncCityToMap(targetCity);
+                } else if (map) {
                     map.panTo([state.lat, state.lon]);
                     if (marker) marker.openPopup();
                 }
+                const forecastTab = document.querySelector('[data-tab="forecast"]');
+                if (forecastTab) forecastTab.click();
                 window.scrollTo({ top: 0, behavior: "smooth" });
-            } else if (pill.action === "set_layer") {
-                setMapLayer(pill.layer);
-            } else if (pill.action === "switch_tab") {
-                const btn = document.querySelector(`[data-tab="${pill.tab}"]`);
-                if (btn) btn.click();
-            } else if (pill.action === "quick_query") {
-                sendChatMessage(pill.query);
+            } else if (action === "set_layer") {
+                if (pill.layer) setMapLayer(pill.layer);
+            } else if (action === "switch_tab") {
+                if (pill.tab === "alerts") {
+                    const banner = document.getElementById("riskBanner");
+                    if (banner) banner.scrollIntoView({ behavior: "smooth", block: "center" });
+                } else if (pill.tab) {
+                    const btn = document.querySelector(`[data-tab="${pill.tab}"]`);
+                    if (btn) btn.click();
+                }
+            } else if (action === "quick_query") {
+                if (pill.query) sendChatMessage(pill.query);
             }
         }
 
@@ -2793,7 +2852,7 @@
         }
 
         /* =====================================================
-           SEND CHAT MESSAGE (WITH MULTI-TURN CONTEXT)
+           SEND CHAT MESSAGE (WITH MULTI-TURN CONTEXT & TIMEOUT)
         ===================================================== */
         async function sendChatMessage(customMsg = null) {
             const inputEl = document.getElementById("chatInput");
@@ -2840,51 +2899,100 @@
                 content: m.content
             }));
 
+            // 25-second AbortController timeout to prevent UI hanging
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 25000);
+
             try {
-                const res = await fetch(`${API_BASE}/chat`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        message: msg,
-                        language: state.language,
-                        location_context: {
-                            city: activeChat.city || state.city,
-                            lat: (activeChat.coords && activeChat.coords.lat) || state.lat,
-                            lon: (activeChat.coords && activeChat.coords.lon) || state.lon
-                        },
-                        conversation_history: historyPayload
-                    })
-                });
+                let res;
+                try {
+                    res = await fetch(`${API_BASE}/chat`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            message: msg,
+                            language: state.language,
+                            location_context: {
+                                city: activeChat.city || state.city,
+                                lat: (activeChat.coords && activeChat.coords.lat != null) ? activeChat.coords.lat : state.lat,
+                                lon: (activeChat.coords && activeChat.coords.lon != null) ? activeChat.coords.lon : state.lon
+                            },
+                            conversation_history: historyPayload
+                        }),
+                        signal: controller.signal
+                    });
+                } catch (fetchErr) {
+                    if (fetchErr.name === "AbortError") {
+                        throw new Error("TIMEOUT: WeatherGPT+ took too long to respond. Please try again.");
+                    }
+                    throw new Error("NETWORK_ERROR: WeatherGPT+ backend is unreachable. Please check that the backend is running.");
+                } finally {
+                    clearTimeout(timeoutId);
+                }
 
-                hideTypingIndicator();
-                if (!res.ok) throw new Error("Chat API returned status " + res.status);
+                let data;
+                try {
+                    data = await res.json();
+                } catch (jsonErr) {
+                    throw new Error(`INVALID_JSON: Backend returned an unreadable response (HTTP ${res.status}).`);
+                }
 
-                const data = await res.json();
-                const answer = data.answer || "No response received.";
+                if (!res.ok) {
+                    const serverMsg = data && (data.error || data.detail || data.message || data.answer);
+                    if (res.status === 404) {
+                        throw new Error("NOT_FOUND: The /chat endpoint was not found (HTTP 404).");
+                    } else if (res.status === 422) {
+                        throw new Error(`VALIDATION_ERROR: Request rejected by server (HTTP 422). ${serverMsg || ""}`);
+                    } else if (res.status >= 500) {
+                        throw new Error(`SERVER_ERROR: Server encountered an error (HTTP ${res.status}). ${serverMsg || ""}`);
+                    } else {
+                        throw new Error(`HTTP_ERROR: Server responded with HTTP ${res.status}. ${serverMsg || ""}`);
+                    }
+                }
 
-                // Update active chat location memory
-                if (data.location_context && data.location_context.city) {
-                    activeChat.city = data.location_context.city;
+                const answer = data.answer || data.message || (data.success === false ? (data.error || "Unable to retrieve weather data.") : "No response received.");
+
+                // Synchronize active conversation location context
+                const returnedCity = (data.location_context && data.location_context.city)
+                    || (data.forecast && data.forecast.city)
+                    || (data.weather && data.weather.city);
+
+                if (returnedCity && returnedCity !== "undefined" && returnedCity.trim()) {
+                    activeChat.city = returnedCity.trim();
                     const cityBadgeEl = document.getElementById("activeChatCityBadge");
                     if (cityBadgeEl) cityBadgeEl.textContent = `📍 ${activeChat.city}`;
                 }
 
-                // Chat-to-map synchronization
+                // Chat-to-map synchronization for ui_action
                 if (data.ui_action) {
                     const act = data.ui_action;
-                    if (act.type === "set_layer") {
+                    if (act.type === "set_layer" && act.layer) {
                         setMapLayer(act.layer);
                     } else if (act.type === "geolocate") {
                         document.getElementById("geoBtn")?.click();
+                    } else if (act.type === "focus_map") {
+                        const targetCity = act.city || returnedCity || activeChat.city;
+                        if (targetCity) syncCityToMap(targetCity);
+                    } else if (act.type === "switch_tab" && act.tab) {
+                        if (act.tab === "alerts") {
+                            document.getElementById("riskBanner")?.scrollIntoView({ behavior: "smooth" });
+                        } else {
+                            document.querySelector(`[data-tab="${act.tab}"]`)?.click();
+                        }
                     }
                 }
 
-                // Synchronize map & dashboard if new city is found
-                if (data.weather && data.weather.city && data.weather.city.toLowerCase() !== state.city.toLowerCase()) {
-                    if (data.weather.lat && data.weather.lon) {
-                        activeChat.coords = { lat: data.weather.lat, lon: data.weather.lon };
-                        selectLocation(data.weather.lat, data.weather.lon, data.weather.city);
+                // Synchronize map & dashboard coordinates if returned
+                const retLat = (data.weather && data.weather.lat != null) ? data.weather.lat : (data.location_context && data.location_context.lat != null ? data.location_context.lat : null);
+                const retLon = (data.weather && data.weather.lon != null) ? data.weather.lon : (data.location_context && data.location_context.lon != null ? data.location_context.lon : null);
+
+                if (retLat != null && retLon != null && !isNaN(retLat) && !isNaN(retLon)) {
+                    activeChat.coords = { lat: parseFloat(retLat), lon: parseFloat(retLon) };
+                    if (returnedCity && returnedCity.toLowerCase() !== state.city.toLowerCase()) {
+                        selectLocation(parseFloat(retLat), parseFloat(retLon), returnedCity);
                     }
+                } else if (returnedCity && returnedCity.toLowerCase() !== state.city.toLowerCase()) {
+                    syncCityToMap(returnedCity);
                 }
 
                 const botMsg = {
@@ -2906,13 +3014,24 @@
                 }
 
             } catch (err) {
-                hideTypingIndicator();
                 console.error("Chat error:", err);
+
+                let displayContent = "❌ An unexpected error occurred. Please try again.";
+                const errStr = err.message || "";
+                if (errStr.startsWith("TIMEOUT:")) {
+                    displayContent = "⏱️ " + errStr.replace("TIMEOUT: ", "");
+                } else if (errStr.startsWith("NETWORK_ERROR:")) {
+                    displayContent = "❌ " + errStr.replace("NETWORK_ERROR: ", "");
+                } else if (errStr.startsWith("INVALID_JSON:")) {
+                    displayContent = "⚠️ " + errStr.replace("INVALID_JSON: ", "");
+                } else if (errStr.startsWith("NOT_FOUND:") || errStr.startsWith("VALIDATION_ERROR:") || errStr.startsWith("SERVER_ERROR:") || errStr.startsWith("HTTP_ERROR:")) {
+                    displayContent = "⚠️ " + errStr.substring(errStr.indexOf(":") + 2);
+                }
 
                 const errorMsg = {
                     id: "msg_" + Date.now(),
                     role: "assistant",
-                    content: "❌ Error connecting to WeatherGPT+ API. Please ensure backend is running.",
+                    content: displayContent,
                     timestamp: formatMsgTime(),
                     error: true,
                     retryQuery: msg
@@ -2921,6 +3040,7 @@
                 saveChatStore();
                 renderActiveChat();
             } finally {
+                hideTypingIndicator();
                 if (sendBtn) sendBtn.disabled = false;
                 if (inputEl) inputEl.focus();
             }

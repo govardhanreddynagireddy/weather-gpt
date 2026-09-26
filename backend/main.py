@@ -71,6 +71,10 @@ from backend.routes.alerts import router as alerts_router
 from backend.routes.feedback import router as feedback_router
 
 
+class UTF8JSONResponse(JSONResponse):
+    media_type = "application/json; charset=utf-8"
+
+
 # =====================================================
 # APP
 # =====================================================
@@ -81,7 +85,8 @@ app = FastAPI(
         "Conversational AI & GIS Platform for weather forecasting, "
         "risk analysis, extreme alerts and numerical weather prediction"
     ),
-    version="2.0.0"
+    version="2.0.0",
+    default_response_class=UTF8JSONResponse
 )
 
 
@@ -89,10 +94,25 @@ app = FastAPI(
 # CORS
 # =====================================================
 
+ALLOWED_ORIGINS = [
+    "http://127.0.0.1:5500",
+    "http://localhost:5500",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "https://weather-gpt-production-4837.up.railway.app",
+    "null"
+]
+
+extra_origins = os.getenv("CORS_ORIGINS", "")
+if extra_origins:
+    ALLOWED_ORIGINS.extend([o.strip() for o in extra_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https://.*\.railway\.app$",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
 )
@@ -144,12 +164,12 @@ def health():
 
 @app.get("/app")
 def serve_app():
-    return FileResponse("frontend/index.html")
+    return FileResponse("frontend/index.html", media_type="text/html; charset=utf-8")
 
 
 @app.get("/frontend")
 def serve_frontend():
-    return FileResponse("frontend/index.html")
+    return FileResponse("frontend/index.html", media_type="text/html; charset=utf-8")
 
 
 # =====================================================
@@ -281,7 +301,7 @@ def unified_weather(
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        return JSONResponse(
+        return UTF8JSONResponse(
             status_code=502 if "OPENWEATHER" in str(e) or "Weather" in str(e) else 400,
             content={
                 "success": False,
@@ -327,7 +347,7 @@ def weather(city: str):
     try:
         return get_weather(city=city)
     except Exception as e:
-        return JSONResponse(
+        return UTF8JSONResponse(
             status_code=502,
             content={
                 "success": False,
@@ -353,7 +373,7 @@ def chat(request: ChatRequest):
         )
         return result
     except Exception as e:
-        return JSONResponse(
+        return UTF8JSONResponse(
             status_code=500,
             content={
                 "success": False,
