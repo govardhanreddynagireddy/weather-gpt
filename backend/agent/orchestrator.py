@@ -36,7 +36,14 @@ from backend.tools.weather_tool import (
 from backend.services.gemini_service import generate_grounded_response
 from backend.services.risk_engine import calculate_risk
 from backend.services.impact_advisory import generate_advisory
+from backend.services.activity_advisor import evaluate_activity_suitability
 from backend.tools.historical_tool import compare_weather
+from backend.agent.intent_classifier import (
+    classify_user_intent,
+    is_conversational_intent,
+    get_conversational_response,
+    INTENT_RAIN_QUERY
+)
 
 
 # =====================================================
@@ -67,52 +74,33 @@ TELUGU_CITY_MAP = {
 }
 
 
+from backend.agent.semantic_parser import parse_semantic_intent
+
 # =====================================================
 # EXTRACT CITY
 # =====================================================
 
-def extract_city(message):
-
+def extract_city(message, location_context=None, conversation_history=None):
     if not message:
-        return "Kurnool"
+        return (location_context or {}).get("city") or "Kurnool"
+    info = parse_semantic_intent(message, location_context, conversation_history)
+    return info.get("location") or "Kurnool"
 
-    # Check known Telugu cities first
-    for telugu_name, eng_name in TELUGU_CITY_MAP.items():
-        if telugu_name in message:
-            return eng_name
 
-    text = message.strip()
-    for char in "?!.,:;\"'()[]{}":
-        text = text.replace(char, " ")
 
-    text_lower = " " + " ".join(text.lower().split()) + " "
-    city = None
-
-    for prep in [" in ", " for ", " of ", " at "]:
-        if prep in text_lower:
-            parts = text_lower.split(prep, 1)
-            candidate = parts[1].strip()
-            for stop in [" tomorrow", " today", " next hour", " right now", " now", " and ", " please"]:
-                if stop in candidate:
-                    candidate = candidate.split(stop, 1)[0].strip()
-            if candidate and candidate.lower() != "undefined":
-                city = candidate
-                break
-
-    if not city:
-        for suffix in [" weather", " forecast", " temperature"]:
-            if suffix in text_lower:
-                candidate = text_lower.split(suffix, 1)[0].strip()
-                words = candidate.split()
-                if words:
-                    last_word = words[-1]
-                    if last_word not in ["the", "a", "an", "what", "is", "show", "get", "tell", "current", "tomorrow"]:
-                        city = last_word
-
-    if city and city.lower() != "undefined" and len(city) > 1:
-        return city.title()
-
-    return "Kurnool"
+def _generate_action_pills(tool, city, days_ahead=0, ui_action=None):
+    pills = [
+        {"label": f"📍 View {city} on Map", "action": "focus_map", "city": city},
+        {"label": "🌧️ Rain Layer", "action": "set_layer", "layer": "precipitation"},
+        {"label": "📊 Hourly Forecast", "action": "switch_tab", "tab": "forecast"}
+    ]
+    if tool == "risk":
+        pills.append({"label": "⚠️ Risk Advisory", "action": "switch_tab", "tab": "alerts"})
+    elif tool == "rag":
+        pills.append({"label": "📄 IMD Bulletins", "action": "switch_tab", "tab": "imd"})
+    elif tool in ["gru", "weather_gru", "gru_rag"]:
+        pills.append({"label": "📈 WeatherGRU Chart", "action": "switch_tab", "tab": "gru"})
+    return pills
 
 
 # =====================================================
@@ -234,13 +222,15 @@ def summarize_forecast(city,forecast_data):
 # ORCHESTRATOR
 # =====================================================
 
-def orchestrate(message, language="en"):
+def orchestrate(message, language="en", location_context=None, conversation_history=None):
 
     print()
     print("========================================")
     print("ORCHESTRATOR START")
-    print("MESSAGE:",message)
-    print("LANGUAGE:",language)
+    print("MESSAGE:", message)
+    print("LANGUAGE:", language)
+    print("LOCATION CTX:", location_context)
+    print("CONVERSATION TURNS:", len(conversation_history) if conversation_history else 0)
     print("========================================")
 
 
@@ -251,13 +241,49 @@ def orchestrate(message, language="en"):
     if not message or not message.strip():
 
         return {
-            "success":False,
-            "error":"Message cannot be empty.",
-            "answer":"⚠️ Message cannot be empty." if language == "en" else "⚠️ సందేశం ఖాళీగా ఉండకూడదు."
+            "success": False,
+            "error": "Message cannot be empty.",
+            "answer": "⚠️ Message cannot be empty." if language == "en" else "⚠️ సందేశం ఖాళీగా ఉండకూడదు."
         }
 
-    message=message.strip()
+    message = message.strip()
 
+    # =================================================
+    # SEMANTIC INTENT & LOCATION EXTRACTION
+    # =================================================
+
+    semantic_info = parse_semantic_intent(message, location_context, conversation_history)
+    city = semantic_info["location"]
+    days_ahead = semantic_info["days_ahead"]
+    ui_action = semantic_info["ui_action"]
+    user_intent = semantic_info.get("intent") or classify_user_intent(message, conversation_history)
+
+    # =================================================
+    # CONVERSATIONAL INTENTS (GREETINGS, THANKS, ETC.)
+    # MUST NOT EXECUTE ANY WEATHER TOOLS OR REPEAT PREVIOUS FORECASTS
+    # =================================================
+    if is_conversational_intent(user_intent):
+        print(f"DEBUG CONVERSATIONAL INTENT: '{user_intent}' -> Returning conversational response without weather tools.")
+        conv_answer = get_conversational_response(user_intent, language=language)
+
+        conv_pills = [
+            {"label": f"📍 Weather in {city}", "action": "focus_map", "city": city},
+            {"label": "🌧️ Rain Check", "action": "set_layer", "layer": "precipitation"},
+            {"label": "🔮 Tomorrow Forecast", "action": "switch_tab", "tab": "forecast"}
+        ]
+
+        return {
+            "success": True,
+            "tool": "conversational",
+            "type": "conversational",
+            "intent": user_intent,
+            "message": message,
+            "language": language,
+            "answer": conv_answer,
+            "action_pills": conv_pills,
+            "ui_action": None,
+            "location_context": {"city": city, "days_ahead": days_ahead}
+        }
 
     # =================================================
     # ROUTING
@@ -265,12 +291,124 @@ def orchestrate(message, language="en"):
 
     print("DEBUG 0: ROUTING TOOL")
 
-    tool=route_tool(message)
+    tool = route_tool(message)
 
     print(
         "DEBUG 0: SELECTED TOOL =",
         tool
     )
+
+    action_pills = _generate_action_pills(tool, city, days_ahead, ui_action)
+
+    # =================================================
+    # ACTIVITY & PURPOSE ADVISORY (General-Purpose Conversational Weather Intelligence)
+    # =================================================
+    activity = semantic_info.get("activity")
+    if activity:
+        print(f"DEBUG ACTIVITY: Detected activity '{activity.get('key')}' in domain '{activity.get('domain')}'")
+
+        current_weather = None
+        weather_err = None
+        try:
+            current_weather = get_weather(city)
+        except Exception as e:
+            weather_err = str(e)
+
+        forecast_summary = None
+        raw_forecast = None
+        time_intent = semantic_info.get("time_intent", "current")
+        if days_ahead == 1 or time_intent == "tomorrow":
+            try:
+                raw_forecast = get_weather_forecast(city, days_ahead=1)
+                if raw_forecast:
+                    forecast_summary = summarize_forecast(city, raw_forecast)
+            except Exception:
+                pass
+
+        historical_data = {}
+        try:
+            historical_data = compare_weather(city, current_weather or {})
+        except Exception:
+            pass
+
+        risk_data = {}
+        try:
+            risk_data = calculate_risk(current_weather or {}, historical_data)
+        except Exception:
+            pass
+
+        imd_results = []
+        try:
+            imd_results = search_weather(f"{city} {activity.get('name')} warning bulletin")
+            if not imd_results:
+                imd_results = search_weather(f"{city} weather warning")
+        except Exception:
+            pass
+
+        activity_eval = evaluate_activity_suitability(
+            activity=activity,
+            weather_data=current_weather,
+            forecast_summary=forecast_summary,
+            risk_data=risk_data,
+            imd_warnings=imd_results,
+            time_intent=time_intent,
+            city=city,
+            language=language
+        )
+
+        answer = activity_eval["answer"]
+
+        # Gemini NLG Grounding
+        structured_context = {
+            "tool": "activity_advisory",
+            "activity_name": activity.get("name"),
+            "domain": activity.get("domain"),
+            "decision_context": activity.get("decision_context"),
+            "suitability": activity_eval["suitability"],
+            "city": city,
+            "time_intent": time_intent,
+            "observations": current_weather,
+            "forecast": forecast_summary,
+            "evaluated_parameters": activity_eval["parameters"],
+            "key_factors": activity_eval["key_factors"],
+            "recommendations": activity_eval["recommendations"],
+            "attributions": activity_eval["attributions"],
+            "official_warnings": activity_eval["attributions"]["official_warnings"],
+            "direct_answer": activity_eval["direct_answer"]
+        }
+
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
+        if gemini_answer:
+            answer = gemini_answer
+
+        act_pills = [
+            {"label": f"📍 View {city} on Map", "action": "focus_map", "city": city},
+            {"label": "🌧️ Rain Layer", "action": "set_layer", "layer": "precipitation"},
+            {"label": "⚠️ Risk & Advisories", "action": "switch_tab", "tab": "alerts"}
+        ]
+        if days_ahead == 1:
+            act_pills.append({"label": "📊 Hourly Forecast", "action": "switch_tab", "tab": "forecast"})
+
+        effective_tool = "risk" if (tool == "risk" or activity.get("domain") == "agriculture") else "activity_advisory"
+
+        return {
+            "success": True,
+            "tool": effective_tool,
+            "type": "activity_advisory",
+            "activity": activity.get("key"),
+            "domain": activity.get("domain"),
+            "suitability": activity_eval["suitability"],
+            "message": message,
+            "language": language,
+            "weather": current_weather,
+            "forecast": forecast_summary,
+            "risk": risk_data,
+            "activity_advisory": activity_eval,
+            "answer": answer,
+            "action_pills": act_pills,
+            "ui_action": ui_action,
+            "location_context": {"city": city, "days_ahead": days_ahead}
+        }
 
 
     # =================================================
@@ -279,7 +417,7 @@ def orchestrate(message, language="en"):
 
     if tool=="weather_gru":
 
-        city=extract_city(message)
+        city = semantic_info["location"] or extract_city(message, location_context, conversation_history)
         weather_data=None
         weather_err=None
         prediction=None
@@ -342,7 +480,7 @@ def orchestrate(message, language="en"):
             "weather_error": weather_err,
             "gru_error": gru_err
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -357,7 +495,10 @@ def orchestrate(message, language="en"):
             "prediction":prediction,
             "predicted_temperature_celsius":predicted_temp,
             "rag_sources":[],
-            "answer":answer
+            "answer":answer,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -367,8 +508,8 @@ def orchestrate(message, language="en"):
 
     if tool=="weather_rag":
 
-        city=extract_city(message)
-        days_ahead=1 if ("tomorrow" in message.lower() or "రేపు" in message) else 0
+        city = semantic_info["location"] or extract_city(message, location_context, conversation_history)
+        days_ahead = semantic_info["days_ahead"]
         weather_data=None
         weather_err=None
         results=[]
@@ -439,7 +580,7 @@ def orchestrate(message, language="en"):
             "weather_error": weather_err,
             "rag_error": rag_err
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -453,7 +594,10 @@ def orchestrate(message, language="en"):
             "forecast":summarize_forecast(city,weather_data) if (days_ahead==1 and weather_data) else None,
             "sources":sources,
             "rag_sources":sources,
-            "answer":answer
+            "answer":answer,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -528,7 +672,7 @@ def orchestrate(message, language="en"):
             "gru_error": gru_err,
             "rag_error": rag_err
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -541,7 +685,10 @@ def orchestrate(message, language="en"):
             "prediction":prediction,
             "predicted_temperature_celsius":predicted_temp,
             "sources":sources,
-            "answer":answer
+            "answer":answer,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -556,18 +703,13 @@ def orchestrate(message, language="en"):
         print("WEATHER DEBUG")
         print("========================================")
 
-        city=extract_city(message)
+        if not city:
+            city = extract_city(message, location_context)
 
         print(
             "DEBUG WEATHER 1: CITY =",
             city
         )
-
-        days_ahead=0
-
-        if "tomorrow" in message.lower() or "రేపు" in message:
-
-            days_ahead=1
 
         print(
             "DEBUG WEATHER 2: DAYS AHEAD =",
@@ -668,7 +810,23 @@ def orchestrate(message, language="en"):
                 "--"
             )
 
-            if language == "te":
+            if user_intent == INTENT_RAIN_QUERY:
+                precip = float(rainfall) if rainfall not in ["--", None] else 0.0
+                if language == "te":
+                    answer = (
+                        f"🌧️ {city} లో వర్షపాతం సమాచారం:\n\n"
+                        f"వర్షపాతం: {rainfall} mm\n"
+                        f"వాతావరణ పరిస్థితి: {condition}\n"
+                        f"పరిస్థితి: {'ప్రస్తుతం వర్షం పడుతోంది.' if precip > 0 else 'ప్రస్తుతం వర్షం లేదు.'}"
+                    )
+                else:
+                    answer = (
+                        f"🌧️ Rain Information for {city}:\n\n"
+                        f"• Precipitation: {rainfall} mm\n"
+                        f"• Sky Condition: {condition}\n"
+                        f"• Status: {'Rain is currently observed.' if precip > 0 else 'No rain is currently observed.'}"
+                    )
+            elif language == "te":
                 answer=(
                     f"{city} లో ప్రస్తుత వాతావరణం:\n\n"
                     f"🌡️ ఉష్ణోగ్రత: {temperature} °C\n"
@@ -690,10 +848,11 @@ def orchestrate(message, language="en"):
             # Gemini NLG Grounding
             structured_context = {
                 "tool": "weather",
+                "intent": user_intent,
                 "city": city,
                 "current_weather": weather_data
             }
-            gemini_answer = generate_grounded_response(message, structured_context, language)
+            gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
             if gemini_answer:
                 answer = gemini_answer
 
@@ -701,12 +860,16 @@ def orchestrate(message, language="en"):
                 "success":True,
                 "tool":"weather",
                 "type":"city_weather",
+                "intent":user_intent,
                 "message":message,
                 "language":language,
                 "weather":weather_data,
                 "weather_data":weather_data,
                 "rag_sources":[],
-                "answer":answer
+                "answer":answer,
+                "action_pills":action_pills,
+                "ui_action":ui_action,
+                "location_context":{"city": city, "days_ahead": days_ahead}
             }
 
         # =================================================
@@ -718,7 +881,25 @@ def orchestrate(message, language="en"):
             weather_data
         )
 
-        if language == "te":
+        if user_intent == INTENT_RAIN_QUERY:
+            precip = float(forecast_summary.get("precipitation_mm", 0.0) or 0.0)
+            cond = forecast_summary.get("weather_description", "Partly Cloudy")
+            dt = forecast_summary.get("date", "tomorrow")
+            if language == "te":
+                answer = (
+                    f"🌧️ {city} లో రేపటి ({dt}) వర్షపాతం సమాచారం:\n\n"
+                    f"అంచనా వేసిన వర్షపాతం: {precip} mm\n"
+                    f"వాతావరణ పరిస్థితి: {cond}\n"
+                    f"పరిస్థితి: {'రేపు వర్షం పడే అవకాశం ఉంది.' if precip > 0 else 'రేపు వర్షం పడే సూచనలు లేవు.'}"
+                )
+            else:
+                answer = (
+                    f"🌧️ Rain Information for {city} tomorrow ({dt}):\n\n"
+                    f"• Expected Precipitation: {precip} mm\n"
+                    f"• Sky Condition: {cond}\n"
+                    f"• Status: {'Rain is expected tomorrow.' if precip > 0 else 'No significant rain is expected tomorrow.'}"
+                )
+        elif language == "te":
             answer=(
                 f"{city} లో రేపటి వాతావరణ అంచనా "
                 f"({forecast_summary['date']}):\n\n"
@@ -740,10 +921,11 @@ def orchestrate(message, language="en"):
         # Gemini NLG Grounding
         structured_context = {
             "tool": "weather_forecast",
+            "intent": user_intent,
             "city": city,
             "forecast": forecast_summary
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -755,7 +937,10 @@ def orchestrate(message, language="en"):
             "language":language,
             "forecast":forecast_summary,
             "raw_forecast":weather_data,
-            "answer":answer
+            "answer":answer,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -818,7 +1003,7 @@ def orchestrate(message, language="en"):
             "horizon": "next_hour",
             "model": model_info
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -833,7 +1018,10 @@ def orchestrate(message, language="en"):
             "model":model_info,
             "source":"era5_merged.nc",
             "prediction_horizon":"next_hour",
-            "answer":answer
+            "answer":answer,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -899,7 +1087,7 @@ def orchestrate(message, language="en"):
             "query": message,
             "imd_bulletins": results[:4]
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -910,7 +1098,10 @@ def orchestrate(message, language="en"):
             "message":message,
             "language":language,
             "answer":answer,
-            "sources":sources
+            "sources":sources,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -920,7 +1111,7 @@ def orchestrate(message, language="en"):
 
     if tool=="historical":
 
-        city=extract_city(message)
+        city = semantic_info["location"] or extract_city(message, location_context, conversation_history)
         weather_data=None
         try:
             weather_data=get_weather(city)
@@ -968,7 +1159,7 @@ def orchestrate(message, language="en"):
             "current_weather": weather_data,
             "historical_comparison": historical_data
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -980,7 +1171,10 @@ def orchestrate(message, language="en"):
             "language":language,
             "weather":weather_data,
             "historical":historical_data,
-            "answer":answer
+            "answer":answer,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -990,7 +1184,7 @@ def orchestrate(message, language="en"):
 
     if tool=="risk":
 
-        city=extract_city(message)
+        city = semantic_info["location"] or extract_city(message, location_context, conversation_history)
         weather_data=None
         try:
             weather_data=get_weather(city)
@@ -1032,7 +1226,7 @@ def orchestrate(message, language="en"):
             "advisory": advisory_data,
             "historical": historical_data
         }
-        gemini_answer = generate_grounded_response(message, structured_context, language)
+        gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
         if gemini_answer:
             answer = gemini_answer
 
@@ -1046,7 +1240,10 @@ def orchestrate(message, language="en"):
             "risk":risk_data,
             "advisory":advisory_data,
             "historical":historical_data,
-            "answer":answer
+            "answer":answer,
+            "action_pills":action_pills,
+            "ui_action":ui_action,
+            "location_context":{"city": city, "days_ahead": days_ahead}
         }
 
 
@@ -1088,7 +1285,7 @@ def orchestrate(message, language="en"):
             "Official IMD bulletins and warnings via RAG"
         ]
     }
-    gemini_answer = generate_grounded_response(message, structured_context, language)
+    gemini_answer = generate_grounded_response(message, structured_context, language, conversation_history)
     if gemini_answer:
         fallback_ans = gemini_answer
 
@@ -1098,5 +1295,8 @@ def orchestrate(message, language="en"):
         "type":"fallback_response",
         "message":message,
         "language":language,
-        "answer":fallback_ans
+        "answer":fallback_ans,
+        "action_pills":action_pills,
+        "ui_action":ui_action,
+        "location_context":{"city": city, "days_ahead": days_ahead}
     }

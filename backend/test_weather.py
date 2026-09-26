@@ -1,3 +1,8 @@
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from tools.weather_api_tool import get_weather
 from tools.historical_tool import compare_weather
 from services.risk_engine import calculate_risk

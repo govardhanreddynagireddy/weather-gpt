@@ -19,11 +19,21 @@ CRITICAL GROUNDING RULES:
 2. Never fabricate weather warnings, alerts, or official IMD statements. If no warning is present in the context, explicitly confirm that there are no active warnings.
 3. Do not override or contradict the risk engine scores, risk levels, or impact advisory recommendations.
 4. Do not override the GRU model's predictions. When discussing next-hour or ML forecasts, reference the WeatherGRU model prediction as provided.
-5. If any information or data source is unavailable (e.g. historical data, RAG search, or GRU prediction), explicitly state that it is unavailable rather than guessing.
-6. Provide clear, concise, and actionable explanations suitable for general citizens, farmers, and travelers.
-7. Maintain the requested output language strictly:
+5. If the user asks about an activity, purpose, or decision (e.g. spraying, crop drying, harvesting, irrigation, travel, umbrella, outdoor events, construction, heat exposure):
+   - Directly answer their question (e.g., whether conditions are favorable, marginal, or unfavorable, or whether an umbrella is needed) using the provided activity advisory analysis.
+   - Ground your answer in the specific numerical meteorological parameters and thresholds provided.
+   - Clearly distinguish between:
+     a) Measured real-time observations
+     b) Weather forecasts
+     c) WeatherGPT+ operational advisories
+     d) Official government / IMD warnings
+   - Never make unconditional safety claims on weather alone; reference the specific meteorological criteria.
+6. If any information or data source is unavailable (e.g. historical data, RAG search, or GRU prediction), explicitly state that it is unavailable rather than guessing.
+7. Provide clear, concise, and actionable explanations suitable for general citizens, farmers, and travelers.
+8. Maintain the requested output language strictly:
    - When language is 'en': Output in clear, fluent English.
    - When language is 'te': Output in natural, idiomatic Telugu (తెలుగు) rather than awkward word-for-word translation. Keep numbers, units (°C, km/h, mm, %), and location names accurate and clear.
+9. The current user message must be classified independently before selecting tools. Conversation history may provide context such as location or date, but MUST NOT cause the previous intent or previous answer to be repeated. Greetings and acknowledgements are conversational intents and must not invoke weather tools.
 """
 
 def get_gemini_client():
@@ -43,7 +53,8 @@ def get_gemini_client():
 def generate_grounded_response(
     user_message: str,
     context: Dict[str, Any],
-    language: str = "en"
+    language: str = "en",
+    conversation_history: Optional[list] = None
 ) -> Optional[str]:
     """
     Generates a natural language response grounded in backend context using Gemini.
@@ -62,6 +73,18 @@ def generate_grounded_response(
         "Respond in clear, professional English."
     )
 
+    history_section = ""
+    if conversation_history:
+        recent = conversation_history[-4:]
+        lines = []
+        for turn in recent:
+            role = "User" if turn.get("role") == "user" else "Assistant"
+            text = (turn.get("content") or turn.get("message") or "").strip()
+            if text:
+                lines.append(f"{role}: {text}")
+        if lines:
+            history_section = "\nRECENT CONVERSATION HISTORY:\n" + "\n".join(lines) + "\n"
+
     context_json = json.dumps(context, indent=2, ensure_ascii=False)
     
     prompt = f"""USER QUESTION:
@@ -69,13 +92,14 @@ def generate_grounded_response(
 
 LANGUAGE REQUESTED:
 {language} ({lang_instruction})
-
+{history_section}
 TRUSTED BACKEND CONTEXT:
 ```json
 {context_json}
 ```
 
 Please provide a grounded, helpful, and actionable response answering the user's question using ONLY the trusted context above."""
+
 
     # 1. Try official google-genai SDK
     try:

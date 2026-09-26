@@ -45,13 +45,28 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
-from fastapi import FastAPI
+from datetime import datetime
+from typing import Optional, Dict, Any
+from pathlib import Path
+
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response, FileResponse
 from pydantic import BaseModel
+import requests
 
 from backend.agent.orchestrator import orchestrate
-from backend.tools.weather_tool import get_weather
+from backend.tools.weather_tool import (
+    get_weather,
+    get_weather_forecast,
+    search_locations,
+    reverse_geocode
+)
+from backend.tools.historical_tool import compare_weather
+from backend.services.risk_engine import calculate_risk
+from backend.services.impact_advisory import generate_advisory
+from backend.services.nwp_service import get_gfs_forecast, get_wrf_info
+from backend.tools.gru_tool import predict_latest_temperature
 from backend.routes.alerts import router as alerts_router
 from backend.routes.feedback import router as feedback_router
 
@@ -60,16 +75,13 @@ from backend.routes.feedback import router as feedback_router
 # APP
 # =====================================================
 
-app=FastAPI(
-
+app = FastAPI(
     title="WeatherGPT+",
-
     description=(
-        "Conversational AI for weather forecasting, "
-        "risk analysis and alerts"
+        "Conversational AI & GIS Platform for weather forecasting, "
+        "risk analysis, extreme alerts and numerical weather prediction"
     ),
-
-    version="1.0.0"
+    version="2.0.0"
 )
 
 
@@ -78,15 +90,10 @@ app=FastAPI(
 # =====================================================
 
 app.add_middleware(
-
     CORSMiddleware,
-
     allow_origins=["*"],
-
     allow_credentials=False,
-
     allow_methods=["*"],
-
     allow_headers=["*"]
 )
 
@@ -104,121 +111,259 @@ app.include_router(feedback_router)
 # =====================================================
 
 class ChatRequest(BaseModel):
+    message: str
+    language: str = "en"
+    location_context: Optional[dict] = None
+    conversation_history: Optional[list] = None
 
-    message:str
-    language:str = "en"
 
 
 # =====================================================
-# ROOT
+# ROOT & HEALTH (MUST PRESERVE FOR TESTS)
 # =====================================================
 
 @app.get("/")
 def root():
-
     return {
-
-        "message":"WeatherGPT+ API is running",
-
-        "status":"success"
+        "message": "WeatherGPT+ API is running",
+        "status": "success",
+        "version": "2.0.0"
     }
 
-
-# =====================================================
-# HEALTH
-# =====================================================
 
 @app.get("/health")
 def health():
-
     return {
-
-        "status":"healthy"
+        "status": "healthy"
     }
 
 
 # =====================================================
-# CURRENT WEATHER
+# FRONTEND APP SERVING
+# =====================================================
+
+@app.get("/app")
+def serve_app():
+    return FileResponse("frontend/index.html")
+
+
+@app.get("/frontend")
+def serve_frontend():
+    return FileResponse("frontend/index.html")
+
+
+# =====================================================
+# MAP TILE PROXY (SECURE OPENWEATHER TILES)
+# =====================================================
+
+VALID_TILE_LAYERS = {
+    "precipitation": "precipitation_new",
+    "precipitation_new": "precipitation_new",
+    "temp": "temp_new",
+    "temp_new": "temp_new",
+    "wind": "wind_new",
+    "wind_new": "wind_new",
+    "clouds": "clouds_new",
+    "clouds_new": "clouds_new",
+    "pressure": "pressure_new",
+    "pressure_new": "pressure_new"
+}
+
+
+@app.get("/api/map/tile/{layer}/{z}/{x}/{y}.png")
+def map_tile(layer: str, z: int, x: int, y: int):
+    """
+    Proxies OpenWeather meteorological tile layers to Leaflet maps securely
+    without exposing the backend OPENWEATHER_API_KEY to client JavaScript.
+    """
+    api_key = os.getenv("OPENWEATHER_API_KEY")
+    if not api_key:
+        return Response(status_code=404, content=b"", media_type="image/png")
+
+    actual_layer = VALID_TILE_LAYERS.get(layer.lower())
+    if not actual_layer:
+        return Response(status_code=400, content=b"", media_type="image/png")
+
+    url = f"https://tile.openweathermap.org/map/{actual_layer}/{z}/{x}/{y}.png?appid={api_key}"
+    try:
+        resp = requests.get(url, timeout=10)
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=1800"}
+        )
+    except Exception:
+        return Response(status_code=502, content=b"", media_type="image/png")
+
+
+# =====================================================
+# UNIFIED WEATHER & GIS INTELLIGENCE ENDPOINT
+# =====================================================
+
+@app.get("/api/weather")
+def unified_weather(
+    city: Optional[str] = None,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None
+):
+    """
+    Returns full meteorological intelligence: real-time observation, 5-day daily forecast,
+    chronological 3-hour progression, 4-tier risk calculation, impact advisory,
+    historical climatology comparison, WeatherGRU prediction, and NOAA GFS NWP.
+    """
+    try:
+        current = get_weather(city=city, lat=lat, lon=lon)
+        eff_city = current.get("city") or city or "Kurnool"
+        eff_lat = current.get("lat") or lat
+        eff_lon = current.get("lon") or lon
+
+        # 5-Day Forecast
+        forecast_data = get_weather_forecast(city=eff_city, lat=eff_lat, lon=eff_lon, days_ahead=None)
+
+        # Historical comparison against 30-year climatological normal
+        historical = compare_weather(eff_city, current)
+
+        # 4-Tier Risk Assessment & Actionable Advisory
+        risk = calculate_risk(current, historical)
+        advisory = generate_advisory(current, risk)
+
+        # WeatherGRU ML Next-Hour Prediction
+        gru_pred = None
+        try:
+            raw_gru = predict_latest_temperature()
+            gru_pred = {
+                "predicted_temperature_celsius": raw_gru.get("prediction_celsius") if isinstance(raw_gru, dict) else float(raw_gru),
+                "model": "WeatherGRU (2-Layer Recurrent Unit)",
+                "confidence_label": "Model confidence unavailable",
+                "confidence_note": "Deterministic GRU regression without calibration ensemble",
+                "source": "ERA5 Land Reanalysis (era5_merged.nc)",
+                "horizon": "next_hour"
+            }
+        except Exception as e:
+            gru_pred = {
+                "error": str(e),
+                "predicted_temperature_celsius": None,
+                "confidence_label": "Unavailable"
+            }
+
+        # NOAA GFS Numerical Weather Prediction
+        gfs_data = None
+        if eff_lat is not None and eff_lon is not None:
+            try:
+                gfs_data = get_gfs_forecast(eff_lat, eff_lon, days=3)
+            except Exception as e:
+                gfs_data = {"error": str(e), "success": False}
+
+        return {
+            "success": True,
+            "location": {
+                "city": eff_city,
+                "name_te": current.get("name_te", eff_city),
+                "country": current.get("country", "IN"),
+                "lat": eff_lat,
+                "lon": eff_lon
+            },
+            "current": current,
+            "forecast_daily": forecast_data.get("daily", []),
+            "forecast_hourly": forecast_data.get("hourly", []),
+            "risk": risk,
+            "advisory": advisory,
+            "historical": historical,
+            "gru_prediction": gru_pred,
+            "nwp_gfs": gfs_data,
+            "sources": [
+                {"name": "OpenWeather API", "role": "Real-Time Weather & 5-Day Forecast"},
+                {"name": "WeatherGRU Model", "role": "Next-Hour Deep Learning Temperature Regression"},
+                {"name": "NOAA GFS (0.25°)", "role": "Numerical Weather Prediction Model"},
+                {"name": "IMD Bulletins & FAISS RAG", "role": "Official Indian Meteorological Knowledge"}
+            ],
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=502 if "OPENWEATHER" in str(e) or "Weather" in str(e) else 400,
+            content={
+                "success": False,
+                "error": str(e)
+            }
+        )
+
+
+# =====================================================
+# GEOCODING ENDPOINTS
+# =====================================================
+
+@app.get("/api/location/search")
+def location_search(q: str = Query(...), limit: int = 5):
+    return {"results": search_locations(q, limit=limit)}
+
+
+@app.get("/api/location/reverse")
+def location_reverse(lat: float, lon: float):
+    return reverse_geocode(lat, lon)
+
+
+# =====================================================
+# NUMERICAL WEATHER PREDICTION ENDPOINTS
+# =====================================================
+
+@app.get("/api/nwp/gfs")
+def nwp_gfs(lat: float, lon: float, days: int = 3):
+    return get_gfs_forecast(lat, lon, days=days)
+
+
+@app.get("/api/nwp/wrf")
+def nwp_wrf():
+    return get_wrf_info()
+
+
+# =====================================================
+# BACKWARD-COMPATIBLE /weather/{city} ENDPOINT
 # =====================================================
 
 @app.get("/weather/{city}")
-def weather(city:str):
-
+def weather(city: str):
     try:
-
-        return get_weather(city)
-
+        return get_weather(city=city)
     except Exception as e:
-
         return JSONResponse(
-
             status_code=502,
-
             content={
-
-                "success":False,
-
-                "tool":"weather",
-
-                "type":"weather_error",
-
-                "error":str(e)
-
+                "success": False,
+                "tool": "weather",
+                "type": "weather_error",
+                "error": str(e)
             }
-
         )
 
 
 # =====================================================
-# CHAT
+# CHAT ENDPOINT (WITH LOCATION CONTEXT & SEMANTIC INTENT)
 # =====================================================
 
 @app.post("/chat")
-def chat(request:ChatRequest):
-
-    # =================================================
-    # orchestrate() already converts per-tool failures
-    # (weather / gru / rag) into JSON error dicts. This
-    # outer try/except is a last-resort safety net so
-    # that ANY unexpected exception in routing itself
-    # still returns JSON instead of a raw 500 / dropped
-    # connection.
-    # =================================================
-
+def chat(request: ChatRequest):
     try:
-
-        result=orchestrate(
-
+        result = orchestrate(
             request.message,
-            language=request.language
+            language=request.language,
+            location_context=request.location_context,
+            conversation_history=request.conversation_history
         )
-
         return result
-
     except Exception as e:
-
         return JSONResponse(
-
             status_code=500,
-
             content={
-
-                "success":False,
-
-                "tool":"unknown",
-
-                "type":"server_error",
-
-                "message":request.message,
-
-                "language":request.language,
-
-                "error":str(e),
-
-                "answer":f"⚠️ Server error processing request: {str(e)}"
-
+                "success": False,
+                "tool": "unknown",
+                "type": "server_error",
+                "message": request.message,
+                "language": request.language,
+                "error": str(e),
+                "answer": f"⚠️ Server error processing request: {str(e)}"
             }
-
         )
 
 

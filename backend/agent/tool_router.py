@@ -4,6 +4,10 @@
 
 
 def route_tool(message):
+    from backend.agent.intent_classifier import classify_user_intent, is_conversational_intent
+    intent = classify_user_intent(message)
+    if is_conversational_intent(intent):
+        return "conversational"
 
     message=message.lower().strip()
 
@@ -92,11 +96,28 @@ def route_tool(message):
         "weather risk",
         "farmer",
         "farmers",
+        "farming",
+        "safe for farming",
+        "safe to spray",
+        "safe",
+        "crop",
+        "crops",
+        "spraying",
+        "spray",
+        "pesticide",
+        "fertilizer",
+        "agriculture",
+        "agricultural",
+        "advisory",
         "ప్రమాదం",
         "రిస్క్",
         "ప్రభావం",
         "రైతు",
         "రైతులు",
+        "వ్యవసాయం",
+        "పంట",
+        "స్ప్రే",
+        "సురక్షితం",
         "వరద",
         "వేడి"
     ]

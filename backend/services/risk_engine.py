@@ -1,85 +1,103 @@
-def calculate_risk(weather,historical=None):
-
-    score=0
-    reasons=[]
+def calculate_risk(weather, historical=None):
+    """
+    Evaluates meteorological risk based on real weather observations and historical anomalies.
+    Returns risk score (0-100), 4-tier level (LOW, MEDIUM, HIGH, SEVERE), and contributing reasons.
+    """
+    score = 0
+    reasons = []
 
     if not weather:
         return {
             "risk_score": 0,
             "risk_level": "LOW",
-            "reasons": ["No weather data available"]
+            "risk_tier": "LOW",
+            "reasons": ["No weather data available"],
+            "severity_badge": "🟢 LOW"
         }
 
-    temperature=weather.get("temperature_celsius", weather.get("temperature", 0.0))
-    rainfall=weather.get("precipitation_mm", weather.get("rainfall", 0.0))
-    wind_speed=weather.get("wind_speed_kmh", weather.get("wind_speed", 0.0))
-    humidity=weather.get("humidity_percent", weather.get("humidity", 0.0))
+    temperature = float(weather.get("temperature_celsius", weather.get("temperature", 0.0)) or 0.0)
+    rainfall = float(weather.get("precipitation_mm", weather.get("rainfall", 0.0)) or 0.0)
+    wind_speed = float(weather.get("wind_speed_kmh", weather.get("wind_speed", 0.0)) or 0.0)
+    humidity = float(weather.get("humidity_percent", weather.get("humidity", 0.0)) or 0.0)
 
-    # Temperature risk
-    if temperature>=40:
-        score+=30
-        reasons.append("Very high temperature")
-    elif temperature>=35:
-        score+=20
-        reasons.append("High temperature")
+    # Temperature hazards
+    if temperature >= 42:
+        score += 35
+        reasons.append("Extreme heat wave conditions")
+    elif temperature >= 38:
+        score += 25
+        reasons.append("High heat stress")
+    elif temperature >= 35:
+        score += 15
+        reasons.append("Elevated temperature")
+    elif temperature <= 5 and temperature > 0:
+        score += 20
+        reasons.append("Cold wave conditions")
 
-    # Rainfall risk
-    if rainfall>=100:
-        score+=40
-        reasons.append("Very heavy rainfall")
-    elif rainfall>=50:
-        score+=30
-        reasons.append("Heavy rainfall")
-    elif rainfall>=20:
-        score+=15
+    # Rainfall / Flood hazards
+    if rainfall >= 100:
+        score += 45
+        reasons.append("Extremely heavy rainfall (flood hazard)")
+    elif rainfall >= 50:
+        score += 30
+        reasons.append("Heavy rainfall (waterlogging risk)")
+    elif rainfall >= 20:
+        score += 15
         reasons.append("Moderate rainfall")
 
-    # Wind risk
-    if wind_speed>=15:
-        score+=30
-        reasons.append("Very strong winds")
-    elif wind_speed>=10:
-        score+=20
-        reasons.append("Strong winds")
-    elif wind_speed>=5:
-        score+=10
+    # Wind hazards
+    if wind_speed >= 35:
+        score += 35
+        reasons.append("Gale / Storm-force winds")
+    elif wind_speed >= 20:
+        score += 25
+        reasons.append("Strong gusty winds")
+    elif wind_speed >= 10:
+        score += 15
         reasons.append("Moderate winds")
 
-    # Humidity risk
-    if humidity>=90:
-        score+=10
-        reasons.append("Very high humidity")
+    # Humidity / Heat Index interaction
+    if humidity >= 90:
+        score += 10
+        reasons.append("Very high relative humidity")
 
-    # Historical anomaly
+    # Historical climatological anomaly
     if historical and historical.get("available") and "comparison" in historical:
+        comparison = historical["comparison"]
+        temp_comp = comparison.get("temperature") or {}
+        wind_comp = comparison.get("wind_speed") or {}
 
-        comparison=historical["comparison"]
+        temp_anom = float(temp_comp.get("anomaly_percent", 0.0) or 0.0)
+        if temp_anom >= 20:
+            score += 15
+            reasons.append("Temperature significantly above historical normal")
 
-        temperature_anomaly=comparison["temperature"]["anomaly_percent"]
+        wind_anom = float(wind_comp.get("anomaly_percent", 0.0) or 0.0)
+        if wind_anom >= 30:
+            score += 10
+            reasons.append("Wind speed significantly above historical normal")
 
-        if temperature_anomaly>=20:
-            score+=15
-            reasons.append("Temperature is significantly above historical levels")
+    # Cap score at 100
+    score = min(score, 100)
 
-        wind_anomaly=comparison["wind_speed"]["anomaly_percent"]
-
-        if wind_anomaly>=30:
-            score+=10
-            reasons.append("Wind speed is significantly above historical levels")
-
-    # Limit score
-    score=min(score,100)
-
-    # Risk level
-    if score>=60:
-        risk_level="HIGH"
-    elif score>=30:
-        risk_level="MEDIUM"
+    # 4-Tier official risk categories
+    if score >= 85:
+        risk_level = "SEVERE"
+        severity_badge = "🔴 SEVERE"
+    elif score >= 60:
+        risk_level = "HIGH"
+        severity_badge = "🟠 HIGH"
+    elif score >= 30:
+        risk_level = "MEDIUM"
+        severity_badge = "🟡 MEDIUM"
     else:
-        risk_level="LOW"
+        risk_level = "LOW"
+        severity_badge = "🟢 LOW"
 
     return {
-        "risk_score":score,
-        "risk_level":risk_level,
-        "reasons":reasons
+        "risk_score": score,
+        "risk_level": risk_level,
+        "risk_tier": risk_level,
+        "severity_badge": severity_badge,
+        "reasons": reasons if reasons else ["Normal weather conditions"]
     }
